@@ -1,0 +1,57 @@
+{
+  "family": "momentir-ga-llm",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::940482450816:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::940482450816:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "momentir-ga-llm",
+      "image": "940482450816.dkr.ecr.ap-northeast-2.amazonaws.com/momentir-ga-llm:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "LANGSMITH_PROJECT",
+          "value": "insurance-memo-refiner"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/database-url"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/openai-api-key"
+        },
+        {
+          "name": "LANGSMITH_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/langsmith-api-key"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/momentir-ga-llm",
+          "awslogs-region": "ap-northeast-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

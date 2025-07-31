@@ -1,0 +1,35 @@
+{
+  "serviceName": "momentir-ga-llm-service",
+  "cluster": "momentir-ga-llm-cluster",
+  "taskDefinition": "momentir-ga-llm",
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-subnet-0dff0c1bd5ed3cd15",
+        "subnet-subnet-017ad6293fb66cf68"
+      ],
+      "securityGroups": [
+        "sg-sg-0959a22b3ff7daf9a"
+      ],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:ap-northeast-2:940482450816:targetgroup/momentir-ga-llm-tg/3e8a18dda012fea3
+      "containerName": "momentir-ga-llm",
+      "containerPort": 8000
+    }
+  ],
+  "healthCheckGracePeriodSeconds": 300,
+  "deploymentConfiguration": {
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 50,
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    }
+  }
+}

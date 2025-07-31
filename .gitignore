@@ -292,3 +292,51 @@ $RECYCLE.BIN/
 /dataSources/
 /dataSources.local.xml
 .claude/settings.local.json
+
+# AWS Infrastructure
+# Sensitive AWS configuration files
+aws/task-definition.json.bak
+aws/service-definition.json.bak
+aws/*.bak
+aws/*.tmp
+
+# Database passwords and secrets
+db_password.txt
+secrets.txt
+*.key
+*.pem
+*.p12
+*.jks
+
+# Docker volumes and data
+postgres_data/
+docker_volumes/
+
+# Application logs
+app.log
+fastapi.log
+uvicorn.log
+
+# AWS CLI temporary files
+.aws/cli/cache/
+.aws/credentials.local
+
+# Terraform (if added later)
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Kubernetes (if added later)
+*.kubeconfig
+k8s-secrets.yaml
+
+# Environment-specific configs
+.env.staging
+.env.testing
+.env.local
+
+# Build artifacts
+dist-docker/
+build-artifacts/
+DEPLOYMENT.md
