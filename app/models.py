@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
@@ -16,6 +16,21 @@ class RefinedMemoResponse(BaseModel):
     original_memo: str = Field(..., description="원본 메모")
     similar_memos_count: int = Field(..., description="유사한 메모 개수")
     processed_at: datetime = Field(default_factory=datetime.now, description="처리 시간")
+
+
+class MemoAnalyzeRequest(BaseModel):
+    memo_id: str = Field(..., description="분석할 메모 ID")
+    conditions: Dict[str, Any] = Field(..., description="분석 조건 (customer_type, contract_status 등)")
+
+
+class MemoAnalyzeResponse(BaseModel):
+    analysis_id: str = Field(..., description="분석 결과 ID")
+    memo_id: str = Field(..., description="분석된 메모 ID")
+    conditions: Dict[str, Any] = Field(..., description="적용된 분석 조건")
+    analysis: str = Field(..., description="LLM 분석 결과")
+    original_memo: str = Field(..., description="원본 메모")
+    refined_memo: Dict[str, Any] = Field(..., description="정제된 메모 데이터")
+    analyzed_at: datetime = Field(default_factory=datetime.now, description="분석 시간")
 
 
 class ErrorResponse(BaseModel):

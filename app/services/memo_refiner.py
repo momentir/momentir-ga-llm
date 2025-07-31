@@ -7,7 +7,7 @@ from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db_models import CustomerMemo
+from app.db_models import CustomerMemo, AnalysisResult
 import json
 import re
 import uuid
@@ -104,6 +104,25 @@ class MemoRefinerService:
         ])
         
         self.parser = MemoRefinementParser()
+        
+        # 조건부 분석을 위한 프롬프트 템플릿 (PROJECT_CONTEXT.md 기반)
+        self.analysis_prompt_template = ChatPromptTemplate.from_messages([
+            ("system", """고객 정보와 메모를 분석하여 적절한 대응 방안을 제시하세요.
+
+고객 유형: {customer_type}
+계약 상태: {contract_status}
+정제된 메모: {refined_memo}
+
+다음 관점에서 종합적으로 분석해주세요:
+1. 고객의 현재 상황과 니즈 파악
+2. 고객 유형과 계약 상태를 고려한 맞춤형 대응 방안
+3. 우선순위가 높은 조치사항
+4. 추가로 확인이 필요한 정보
+5. 예상되는 고객 만족도 및 위험 요소
+
+분석 결과를 구체적이고 실행 가능한 형태로 제시하세요."""),
+            ("human", "위 조건들을 바탕으로 상세한 분석을 제공해주세요.")
+        ])
     
     async def refine_memo(self, memo: str) -> Dict[str, Any]:
         """
@@ -236,3 +255,147 @@ class MemoRefinerService:
             
         except Exception as e:
             raise Exception(f"메모 정제 및 저장 중 오류가 발생했습니다: {str(e)}")
+    
+    async def analyze_memo_with_conditions(self, 
+                                         memo_id: str, 
+                                         conditions: Dict[str, Any], 
+                                         db_session: AsyncSession) -> Dict[str, Any]:
+        """
+        기존 메모를 조건에 따라 분석합니다.
+        """
+        try:
+            # 1. 메모 조회
+            stmt = select(CustomerMemo).where(CustomerMemo.id == uuid.UUID(memo_id))
+            result = await db_session.execute(stmt)
+            memo_record = result.scalar_one_or_none()
+            
+            if not memo_record:
+                raise Exception(f"메모 ID {memo_id}를 찾을 수 없습니다.")
+            
+            # 2. 조건부 분석 수행
+            analysis_result = await self.perform_conditional_analysis(
+                refined_memo=memo_record.refined_memo,
+                conditions=conditions
+            )
+            
+            # 3. 분석 결과를 데이터베이스에 저장
+            analysis_record = await self.save_analysis_to_db(
+                memo_id=memo_record.id,
+                conditions=conditions,
+                analysis=analysis_result,
+                db_session=db_session
+            )
+            
+            return {
+                "analysis_id": str(analysis_record.id),
+                "memo_id": str(memo_record.id),
+                "conditions": conditions,
+                "analysis": analysis_result,
+                "original_memo": memo_record.original_memo,
+                "refined_memo": memo_record.refined_memo,
+                "analyzed_at": analysis_record.created_at.isoformat()
+            }
+            
+        except Exception as e:
+            raise Exception(f"조건부 분석 중 오류가 발생했습니다: {str(e)}")
+    
+    async def perform_conditional_analysis(self, 
+                                         refined_memo: Dict[str, Any], 
+                                         conditions: Dict[str, Any]) -> str:
+        """
+        정제된 메모와 조건을 바탕으로 LLM 분석을 수행합니다.
+        """
+        try:
+            # 조건에서 주요 정보 추출
+            customer_type = conditions.get("customer_type", "일반")
+            contract_status = conditions.get("contract_status", "활성")
+            
+            # 정제된 메모를 텍스트로 변환
+            refined_memo_text = f"""
+요약: {refined_memo.get('summary', '')}
+키워드: {', '.join(refined_memo.get('keywords', []))}
+고객 상태: {refined_memo.get('customer_status', '')}
+필요 조치: {', '.join(refined_memo.get('required_actions', []))}
+"""
+            
+            # LangChain 체인 구성: 프롬프트 -> LLM
+            chain = self.analysis_prompt_template | self.llm
+            
+            # 비동기 실행
+            result = await chain.ainvoke({
+                "customer_type": customer_type,
+                "contract_status": contract_status,
+                "refined_memo": refined_memo_text
+            })
+            
+            return result.content
+            
+        except Exception as e:
+            raise Exception(f"조건부 분석 수행 중 오류가 발생했습니다: {str(e)}")
+    
+    async def save_analysis_to_db(self, 
+                                 memo_id: uuid.UUID, 
+                                 conditions: Dict[str, Any], 
+                                 analysis: str, 
+                                 db_session: AsyncSession) -> AnalysisResult:
+        """
+        분석 결과를 데이터베이스에 저장합니다.
+        """
+        try:
+            # 데이터베이스 모델 생성
+            analysis_record = AnalysisResult(
+                id=uuid.uuid4(),
+                memo_id=memo_id,
+                conditions=conditions,
+                analysis=analysis
+            )
+            
+            # 데이터베이스에 저장
+            db_session.add(analysis_record)
+            await db_session.commit()
+            await db_session.refresh(analysis_record)
+            
+            return analysis_record
+            
+        except Exception as e:
+            await db_session.rollback()
+            raise Exception(f"분석 결과 저장 중 오류가 발생했습니다: {str(e)}")
+    
+    async def get_memo_with_analyses(self, 
+                                   memo_id: str, 
+                                   db_session: AsyncSession) -> Dict[str, Any]:
+        """
+        메모와 관련된 모든 분석 결과를 조회합니다.
+        """
+        try:
+            # 메모 조회 (분석 결과 포함)
+            stmt = select(CustomerMemo).where(CustomerMemo.id == uuid.UUID(memo_id))
+            result = await db_session.execute(stmt)
+            memo_record = result.scalar_one_or_none()
+            
+            if not memo_record:
+                raise Exception(f"메모 ID {memo_id}를 찾을 수 없습니다.")
+            
+            # 관련 분석 결과들 조회
+            analysis_stmt = select(AnalysisResult).where(AnalysisResult.memo_id == memo_record.id)
+            analysis_result = await db_session.execute(analysis_stmt)
+            analyses = analysis_result.scalars().all()
+            
+            return {
+                "memo_id": str(memo_record.id),
+                "original_memo": memo_record.original_memo,
+                "refined_memo": memo_record.refined_memo,
+                "created_at": memo_record.created_at.isoformat(),
+                "analyses": [
+                    {
+                        "analysis_id": str(analysis.id),
+                        "conditions": analysis.conditions,
+                        "analysis": analysis.analysis,
+                        "analyzed_at": analysis.created_at.isoformat()
+                    }
+                    for analysis in analyses
+                ]
+            }
+            
+        except Exception as e:
+            raise Exception(f"메모 및 분석 결과 조회 중 오류가 발생했습니다: {str(e)}")

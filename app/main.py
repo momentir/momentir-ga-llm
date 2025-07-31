@@ -47,6 +47,8 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "memo_refine": "/api/memo/refine",
+            "memo_analyze": "/api/memo/analyze", 
+            "memo_get": "/api/memo/memo/{memo_id}",
             "docs": "/docs"
         }
     }
