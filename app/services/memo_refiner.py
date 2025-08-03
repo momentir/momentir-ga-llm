@@ -97,8 +97,39 @@ class MemoRefinementParser:
 
 class MemoRefinerService:
     def __init__(self):
-        # OpenAI 클라이언트 설정
-        self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Azure OpenAI 클라이언트 설정
+        api_type = os.getenv("OPENAI_API_TYPE", "openai")
+        
+        if api_type == "azure":
+            # Chat용 클라이언트
+            self.client = openai.AsyncAzureOpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+            )
+            self.chat_model = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4")
+            
+            # 임베딩 전용 클라이언트 (별도 리소스)
+            embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
+            embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
+            
+            if embedding_endpoint and embedding_api_key:
+                self.embedding_client = openai.AsyncAzureOpenAI(
+                    api_key=embedding_api_key,
+                    azure_endpoint=embedding_endpoint,
+                    api_version=os.getenv("AZURE_EMBEDDING_API_VERSION", "2024-02-01")
+                )
+                self.embedding_model = os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME", "text-embedding-3-small")
+                logger.info(f"✅ Azure 임베딩 전용 클라이언트 설정 완료: {self.embedding_model}")
+            else:
+                self.embedding_client = None
+                self.embedding_model = None
+                logger.warning("⚠️  임베딩 전용 리소스 설정이 없습니다.")
+        else:
+            self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.embedding_client = self.client
+            self.chat_model = "gpt-4"
+            self.embedding_model = "text-embedding-ada-002"
         
         # 시스템 프롬프트 정의
         self.system_prompt = """당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
@@ -139,7 +170,7 @@ class MemoRefinerService:
         
         self.parser = MemoRefinementParser()
     
-    @trace_llm_call("메모 정제", {"model": "gpt-4", "function": "refine_memo"})
+    @trace_llm_call("메모 정제", {"function": "refine_memo"})
     async def refine_memo(self, memo: str) -> Dict[str, Any]:
         """
         OpenAI를 사용하여 메모를 정제하는 메인 메서드
@@ -147,9 +178,9 @@ class MemoRefinerService:
         try:
             logger.info(f"메모 정제 시작: {memo[:50]}...")
             
-            # OpenAI API 호출
+            # Azure OpenAI API 호출
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": f"메모: {memo}"}
@@ -163,7 +194,7 @@ class MemoRefinerService:
             
             # LangSmith에 수동 로깅
             langsmith_manager.log_llm_call(
-                model="gpt-4",
+                model=self.chat_model,
                 prompt=f"시스템: {self.system_prompt[:100]}...\n사용자: 메모: {memo}",
                 response=result_text,
                 metadata={
@@ -228,17 +259,22 @@ class MemoRefinerService:
         
         return validated
     
-    @trace_llm_call("임베딩 생성", {"model": "text-embedding-ada-002", "function": "create_embedding"})
-    async def create_embedding(self, text: str) -> List[float]:
+    @trace_llm_call("임베딩 생성", {"function": "create_embedding"})
+    async def create_embedding(self, text: str) -> Optional[List[float]]:
         """
         텍스트에 대한 임베딩 벡터를 생성합니다.
+        임베딩 전용 클라이언트를 사용하며, 실패 시 None을 반환합니다.
         """
-        try:
-            logger.info(f"임베딩 생성 시작: {text[:50]}...")
+        if not self.embedding_client or not self.embedding_model:
+            logger.warning("임베딩 클라이언트가 설정되지 않았습니다.")
+            return None
             
-            # OpenAI 임베딩 API 호출
-            response = await self.client.embeddings.create(
-                model="text-embedding-ada-002",
+        try:
+            logger.info(f"임베딩 생성 시작 ({self.embedding_model}): {text[:50]}...")
+            
+            # Azure 임베딩 전용 클라이언트 사용
+            response = await self.embedding_client.embeddings.create(
+                model=self.embedding_model,
                 input=text
             )
             
@@ -246,22 +282,23 @@ class MemoRefinerService:
             
             # LangSmith에 수동 로깅
             langsmith_manager.log_llm_call(
-                model="text-embedding-ada-002",
+                model=self.embedding_model,
                 prompt=text,
                 response=f"임베딩 벡터 (차원: {len(embedding)})",
                 metadata={
                     "function": "create_embedding",
                     "text_length": len(text),
-                    "embedding_dimension": len(embedding)
+                    "embedding_dimension": len(embedding),
+                    "embedding_service": "azure_dedicated"
                 }
             )
             
-            logger.info("임베딩 생성 완료")
+            logger.info(f"임베딩 생성 완료: 차원 {len(embedding)}")
             return embedding
             
         except Exception as e:
-            logger.error(f"임베딩 생성 중 오류: {str(e)}")
-            raise Exception(f"임베딩 생성 중 오류가 발생했습니다: {str(e)}")
+            logger.warning(f"임베딩 생성 실패 (임베딩 없이 계속 진행): {str(e)}")
+            return None
     
     async def save_memo_to_db(self, 
                              original_memo: str, 
@@ -275,13 +312,13 @@ class MemoRefinerService:
             embedding_text = f"{original_memo} {refined_data.get('summary', '')}"
             embedding_vector = await self.create_embedding(embedding_text)
             
-            # 데이터베이스 모델 생성
+            # 데이터베이스 모델 생성 (임베딩이 실패해도 계속 진행)
             memo_record = CustomerMemo(
                 id=uuid.uuid4(),
                 original_memo=original_memo,
                 refined_memo=refined_data,
                 status="refined",
-                embedding=embedding_vector
+                embedding=embedding_vector  # None일 수 있음
             )
             
             # 데이터베이스에 저장
@@ -301,15 +338,25 @@ class MemoRefinerService:
                                 limit: int = 5) -> List[CustomerMemo]:
         """
         유사한 메모를 벡터 검색으로 찾습니다.
+        임베딩이 사용 불가능한 경우 최근 메모를 반환합니다.
         """
         try:
             # 입력 메모의 임베딩 생성
             query_embedding = await self.create_embedding(memo)
             
-            # pgvector를 사용한 유사도 검색
-            stmt = select(CustomerMemo).order_by(
-                CustomerMemo.embedding.cosine_distance(query_embedding)
-            ).limit(limit)
+            if query_embedding is not None:
+                # pgvector를 사용한 유사도 검색
+                stmt = select(CustomerMemo).where(
+                    CustomerMemo.embedding.is_not(None)
+                ).order_by(
+                    CustomerMemo.embedding.cosine_distance(query_embedding)
+                ).limit(limit)
+            else:
+                # 임베딩이 없는 경우 최근 메모를 반환
+                logger.warning("임베딩을 사용할 수 없어 최근 메모를 반환합니다.")
+                stmt = select(CustomerMemo).order_by(
+                    CustomerMemo.created_at.desc()
+                ).limit(limit)
             
             result = await db_session.execute(stmt)
             similar_memos = result.scalars().all()
@@ -317,7 +364,14 @@ class MemoRefinerService:
             return similar_memos
             
         except Exception as e:
-            raise Exception(f"유사 메모 검색 중 오류가 발생했습니다: {str(e)}")
+            logger.warning(f"유사 메모 검색 실패, 최근 메모를 반환합니다: {str(e)}")
+            # 폴백: 최근 메모 반환
+            try:
+                stmt = select(CustomerMemo).order_by(CustomerMemo.created_at.desc()).limit(limit)
+                result = await db_session.execute(stmt)
+                return result.scalars().all()
+            except:
+                return []
     
     async def refine_and_save_memo(self, 
                                   memo: str, 
@@ -443,9 +497,9 @@ class MemoRefinerService:
 
 분석 결과를 구체적이고 실행 가능한 형태로 제시하세요."""
             
-            # OpenAI API 호출
+            # Azure OpenAI API 호출
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": "당신은 보험업계 전문가입니다."},
                     {"role": "user", "content": analysis_prompt}
@@ -582,7 +636,7 @@ class MemoRefinerService:
         
         return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
     
-    @trace_llm_call("향상된 조건부 분석", {"model": "gpt-4", "function": "perform_enhanced_conditional_analysis"})
+    @trace_llm_call("향상된 조건부 분석", {"function": "perform_enhanced_conditional_analysis"})
     async def perform_enhanced_conditional_analysis(self, 
                                                   refined_memo: Dict[str, Any], 
                                                   conditions: Dict[str, Any],
@@ -665,9 +719,9 @@ class MemoRefinerService:
 
 분석 결과는 실무진이 바로 활용할 수 있도록 구체적이고 실행 가능한 형태로 제시하세요."""
 
-            # OpenAI API 호출
+            # Azure OpenAI API 호출
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": "당신은 20년 경력의 보험업계 전문 분석가입니다. 고객 데이터와 메모를 종합하여 실무진에게 유용한 인사이트를 제공합니다."},
                     {"role": "user", "content": analysis_prompt}
@@ -680,7 +734,7 @@ class MemoRefinerService:
             
             # LangSmith에 수동 로깅
             langsmith_manager.log_llm_call(
-                model="gpt-4",
+                model=self.chat_model,
                 prompt=analysis_prompt[:500] + "...",
                 response=analysis_result,
                 metadata={

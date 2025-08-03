@@ -18,7 +18,19 @@ logger = logging.getLogger(__name__)
 
 class CustomerService:
     def __init__(self):
-        self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Azure OpenAI 클라이언트 설정
+        api_type = os.getenv("OPENAI_API_TYPE", "openai")
+        
+        if api_type == "azure":
+            self.client = openai.AsyncAzureOpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+            )
+            self.chat_model = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4")
+        else:
+            self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.chat_model = "gpt-4"
         
         # 표준 고객 스키마 정의
         self.standard_schema = {
@@ -179,7 +191,7 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
-    @trace_llm_call("엑셀 컬럼 매핑", {"model": "gpt-4", "function": "map_excel_columns"})
+    @trace_llm_call("엑셀 컬럼 매핑", {"function": "map_excel_columns"})
     async def map_excel_columns(self, excel_columns: List[str]) -> Dict[str, Any]:
         """
         LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다.
@@ -196,7 +208,7 @@ class CustomerService:
 
             # OpenAI API 호출
             response = await self.client.chat.completions.create(
-                model="gpt-4",
+                model=self.chat_model,
                 messages=[
                     {"role": "system", "content": self.mapping_prompt},
                     {"role": "user", "content": user_prompt}
@@ -223,7 +235,7 @@ class CustomerService:
                 
                 # LangSmith에 수동 로깅
                 langsmith_manager.log_llm_call(
-                    model="gpt-4",
+                    model=self.chat_model,
                     prompt=f"시스템: {self.mapping_prompt[:100]}...\n사용자: {user_prompt}",
                     response=result_text,
                     metadata={

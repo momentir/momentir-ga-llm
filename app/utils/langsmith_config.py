@@ -3,6 +3,7 @@ from typing import Optional
 from functools import wraps
 from langsmith import Client
 from langchain.callbacks import LangChainTracer
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ class LangSmithManager:
         self.client: Optional[Client] = None
         self.tracer: Optional[LangChainTracer] = None
         self.project_name = os.getenv("LANGSMITH_PROJECT", "momentir-ga-llm")
+        self.llm_client = None
         
         self._initialize()
     
@@ -37,6 +39,9 @@ class LangSmithManager:
                 # LangChain Tracer 초기화
                 self.tracer = LangChainTracer(project_name=self.project_name)
                 
+                # LLM 클라이언트 초기화 (Azure 또는 OpenAI)
+                self._init_llm_client()
+                
                 self.enabled = True
                 logger.info(f"✅ LangSmith 추적이 활성화되었습니다. 프로젝트: {self.project_name}")
                 
@@ -45,6 +50,30 @@ class LangSmithManager:
                 self.enabled = False
         else:
             logger.info("ℹ️  LangSmith 추적이 비활성화되어 있습니다.")
+    
+    def _init_llm_client(self):
+        """LLM 클라이언트 초기화 (Azure 또는 OpenAI)"""
+        api_type = os.getenv("OPENAI_API_TYPE", "openai")
+        
+        try:
+            if api_type == "azure":
+                self.llm_client = AzureChatOpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+                    deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4"),
+                    callbacks=[self.tracer] if self.tracer else []
+                )
+                logger.info("✅ Azure OpenAI LLM 클라이언트 초기화 완료")
+            else:
+                self.llm_client = ChatOpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    model="gpt-4",
+                    callbacks=[self.tracer] if self.tracer else []
+                )
+                logger.info("✅ OpenAI LLM 클라이언트 초기화 완료")
+        except Exception as e:
+            logger.warning(f"⚠️  LLM 클라이언트 초기화 실패: {e}")
     
     def get_callbacks(self):
         """LangChain 콜백 반환"""
