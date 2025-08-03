@@ -1,9 +1,6 @@
 import os
 from typing import Dict, Any, List, Optional
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import BaseOutputParser
-from langchain.output_parsers import PydanticOutputParser
+import openai
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,127 +10,152 @@ import re
 import uuid
 
 
+class TimeExpression(BaseModel):
+    expression: str = Field(description="원본 시간 표현")
+    parsed_date: Optional[str] = Field(description="파싱된 날짜 (YYYY-MM-DD 형식)", default=None)
+
+class InsuranceInfo(BaseModel):
+    products: List[str] = Field(description="언급된 보험 상품명", default=[])
+    premium_amount: Optional[str] = Field(description="보험료 금액", default=None)
+    interest_products: List[str] = Field(description="관심 있는 보험 상품", default=[])
+    policy_changes: List[str] = Field(description="정책 변경 사항", default=[])
+
 class RefinedMemoOutput(BaseModel):
     summary: str = Field(description="메모의 핵심 내용을 한 문장으로 요약")
-    keywords: List[str] = Field(description="메모에서 추출한 주요 키워드들")
-    customer_status: str = Field(description="고객의 현재 상황이나 감정 상태")
-    required_actions: List[str] = Field(description="필요한 조치사항들")
+    status: str = Field(description="고객의 현재 상태/감정")
+    keywords: List[str] = Field(description="주요 키워드 (관심사, 니즈)")
+    time_expressions: List[TimeExpression] = Field(description="시간 관련 표현들", default=[])
+    required_actions: List[str] = Field(description="필요한 후속 조치")
+    insurance_info: InsuranceInfo = Field(description="보험 관련 정보", default_factory=InsuranceInfo)
 
 
-class MemoRefinementParser(BaseOutputParser):
-    def __init__(self):
-        self.pydantic_parser = PydanticOutputParser(pydantic_object=RefinedMemoOutput)
-    
+class MemoRefinementParser:
     def parse(self, text: str) -> Dict[str, Any]:
         try:
-            # Try Pydantic parser first
-            parsed = self.pydantic_parser.parse(text)
-            return parsed.dict()
+            # Try JSON parsing first
+            import json
+            import re
+            
+            # Extract JSON from the response if it's wrapped in text
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(0)
+                parsed_json = json.loads(json_text)
+                
+                # Validate and convert to our expected format
+                result = {
+                    "summary": parsed_json.get("summary", ""),
+                    "status": parsed_json.get("status", ""),
+                    "keywords": parsed_json.get("keywords", []),
+                    "time_expressions": parsed_json.get("time_expressions", []),
+                    "required_actions": parsed_json.get("required_actions", []),
+                    "insurance_info": parsed_json.get("insurance_info", {})
+                }
+                return result
         except:
-            # Fallback to manual parsing
-            lines = text.strip().split('\n')
-            result = {
-                "summary": "",
-                "keywords": [],
-                "customer_status": "",
-                "required_actions": []
+            pass
+        
+        # Fallback to manual parsing for backward compatibility
+        lines = text.strip().split('\n')
+        result = {
+            "summary": "",
+            "status": "",
+            "keywords": [],
+            "time_expressions": [],
+            "required_actions": [],
+            "insurance_info": {
+                "products": [],
+                "premium_amount": None,
+                "interest_products": [],
+                "policy_changes": []
             }
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                if line.startswith('- 요약:'):
-                    result["summary"] = line.replace('- 요약:', '').strip()
-                elif line.startswith('요약:'):
-                    result["summary"] = line.replace('요약:', '').strip()
-                elif line.startswith('- 주요 키워드:'):
-                    keywords_text = line.replace('- 주요 키워드:', '').strip()
-                    result["keywords"] = [k.strip() for k in keywords_text.split(',') if k.strip()]
-                elif line.startswith('주요 키워드:'):
-                    keywords_text = line.replace('주요 키워드:', '').strip()
-                    result["keywords"] = [k.strip() for k in keywords_text.split(',') if k.strip()]
-                elif line.startswith('- 고객 상태:'):
-                    result["customer_status"] = line.replace('- 고객 상태:', '').strip()
-                elif line.startswith('고객 상태:'):
-                    result["customer_status"] = line.replace('고객 상태:', '').strip()
-                elif line.startswith('- 필요 조치:'):
-                    actions_text = line.replace('- 필요 조치:', '').strip()
-                    if actions_text:
-                        result["required_actions"] = [a.strip() for a in actions_text.split(',') if a.strip()]
-                elif line.startswith('필요 조치:'):
-                    actions_text = line.replace('필요 조치:', '').strip()
-                    if actions_text:
-                        result["required_actions"] = [a.strip() for a in actions_text.split(',') if a.strip()]
-            
-            return result
+        }
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            if line.startswith('- 요약:') or line.startswith('요약:'):
+                result["summary"] = line.replace('- 요약:', '').replace('요약:', '').strip()
+            elif line.startswith('- 고객 상태:') or line.startswith('고객 상태:'):
+                result["status"] = line.replace('- 고객 상태:', '').replace('고객 상태:', '').strip()
+            elif line.startswith('- 주요 키워드:') or line.startswith('주요 키워드:'):
+                keywords_text = line.replace('- 주요 키워드:', '').replace('주요 키워드:', '').strip()
+                result["keywords"] = [k.strip() for k in keywords_text.split(',') if k.strip()]
+            elif line.startswith('- 필요 조치:') or line.startswith('필요 조치:'):
+                actions_text = line.replace('- 필요 조치:', '').replace('필요 조치:', '').strip()
+                if actions_text:
+                    result["required_actions"] = [a.strip() for a in actions_text.split(',') if a.strip()]
+        
+        return result
 
 
 class MemoRefinerService:
     def __init__(self):
-        # GPT-4 모델 설정 - PROJECT_CONTEXT.md에 따라 최적화
-        self.llm = ChatOpenAI(
-            model="gpt-4",
-            temperature=0.1,  # 일관된 출력을 위해 낮은 온도 설정
-            max_tokens=1000,  # 충분한 출력 길이 보장
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
+        # OpenAI 클라이언트 설정
+        self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # OpenAI 임베딩 모델 설정 (pgvector용)
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-ada-002",
-            openai_api_key=os.getenv("OPENAI_API_KEY")
-        )
-        
-        # PROJECT_CONTEXT.md의 프롬프트 템플릿 정확히 적용
-        self.prompt_template = ChatPromptTemplate.from_messages([
-            ("system", """당신은 보험회사의 고객 메모를 정제하는 전문가입니다.
-다음 고객 메모를 구조화된 형태로 정제해주세요:
+        # 시스템 프롬프트 정의
+        self.system_prompt = """당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
+다음 고객 메모에서 중요한 정보를 추출해주세요:
 
-입력 메모: {memo}
+다음 정보를 추출하세요:
+1. 고객 상태/감정
+2. 주요 키워드 (관심사, 니즈)
+3. 시간 관련 표현 (예: "2주 후", "다음 달", "내일", "곧")
+4. 필요한 후속 조치
+5. 보험 관련 정보 (상품명, 보험료, 관심 상품)
 
-다음 형식으로 출력하세요:
-- 요약: [메모의 핵심 내용을 한 문장으로 명확하게 요약]
-- 주요 키워드: [키워드1, 키워드2, 키워드3] (중요한 키워드들을 쉼표로 구분)
-- 고객 상태: [고객의 현재 상황, 감정 상태, 니즈 등을 파악하여 기술]
-- 필요 조치: [고객 대응을 위해 필요한 구체적인 조치사항들] (쉼표로 구분)
+출력은 반드시 다음 JSON 형식으로 제공하세요:
+{
+  "summary": "메모의 핵심 내용을 한 문장으로 요약",
+  "status": "고객의 현재 상태/감정",
+  "keywords": ["키워드1", "키워드2", "키워드3"],
+  "time_expressions": [{
+    "expression": "원본 시간 표현",
+    "parsed_date": "YYYY-MM-DD 형식 (파싱 가능한 경우)"
+  }],
+  "required_actions": ["조치1", "조치2"],
+  "insurance_info": {
+    "products": ["언급된 보험상품"],
+    "premium_amount": "보험료 금액",
+    "interest_products": ["관심 상품"],
+    "policy_changes": ["정책 변경사항"]
+  }
+}
 
-보험업계 전문용어와 고객 서비스 관점에서 분석하여 정확하고 유용한 정보를 제공하세요."""),
-            ("human", "{memo}")
-        ])
+시간 표현 파싱 규칙:
+- "2주 후" → 현재 날짜 + 14일
+- "다음 달" → 다음 달 1일
+- "내일" → 현재 날짜 + 1일
+- 구체적 날짜는 그대로 활용
+
+보험업계 전문용어와 고객 서비스 관점에서 정확하게 분석하세요."""
         
         self.parser = MemoRefinementParser()
-        
-        # 조건부 분석을 위한 프롬프트 템플릿 (PROJECT_CONTEXT.md 기반)
-        self.analysis_prompt_template = ChatPromptTemplate.from_messages([
-            ("system", """고객 정보와 메모를 분석하여 적절한 대응 방안을 제시하세요.
-
-고객 유형: {customer_type}
-계약 상태: {contract_status}
-정제된 메모: {refined_memo}
-
-다음 관점에서 종합적으로 분석해주세요:
-1. 고객의 현재 상황과 니즈 파악
-2. 고객 유형과 계약 상태를 고려한 맞춤형 대응 방안
-3. 우선순위가 높은 조치사항
-4. 추가로 확인이 필요한 정보
-5. 예상되는 고객 만족도 및 위험 요소
-
-분석 결과를 구체적이고 실행 가능한 형태로 제시하세요."""),
-            ("human", "위 조건들을 바탕으로 상세한 분석을 제공해주세요.")
-        ])
     
     async def refine_memo(self, memo: str) -> Dict[str, Any]:
         """
-        LangChain을 사용하여 메모를 정제하는 메인 메서드
+        OpenAI를 사용하여 메모를 정제하는 메인 메서드
         """
         try:
-            # LangChain 체인 구성: 프롬프트 -> LLM -> 파서
-            chain = self.prompt_template | self.llm | self.parser
+            # OpenAI API 호출
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": f"메모: {memo}"}
+                ],
+                temperature=0.1,
+                max_tokens=1000
+            )
             
-            # 비동기 실행
-            result = await chain.ainvoke({"memo": memo})
+            # 응답 텍스트 추출
+            result_text = response.choices[0].message.content
+            
+            # 파서를 통해 결과 파싱
+            result = self.parser.parse(result_text)
             
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
@@ -149,9 +171,11 @@ class MemoRefinerService:
         """
         validated = {
             "summary": result.get("summary", "").strip() or "메모 요약을 생성할 수 없습니다.",
+            "status": result.get("status", "").strip() or "고객 상태 파악 필요",
             "keywords": result.get("keywords", []) or ["키워드 없음"],
-            "customer_status": result.get("customer_status", "").strip() or "고객 상태 파악 필요",
-            "required_actions": result.get("required_actions", []) or ["추가 분석 필요"]
+            "time_expressions": result.get("time_expressions", []) or [],
+            "required_actions": result.get("required_actions", []) or ["추가 분석 필요"],
+            "insurance_info": result.get("insurance_info", {}) or {}
         }
         
         # 키워드가 문자열인 경우 리스트로 변환
@@ -162,6 +186,25 @@ class MemoRefinerService:
         if isinstance(validated["required_actions"], str):
             validated["required_actions"] = [a.strip() for a in validated["required_actions"].split(',') if a.strip()]
         
+        # insurance_info 기본값 설정
+        if not validated["insurance_info"]:
+            validated["insurance_info"] = {
+                "products": [],
+                "premium_amount": None,
+                "interest_products": [],
+                "policy_changes": []
+            }
+        
+        # time_expressions 검증
+        if validated["time_expressions"] and isinstance(validated["time_expressions"], list):
+            for i, expr in enumerate(validated["time_expressions"]):
+                if isinstance(expr, str):
+                    # 문자열인 경우 딕셔너리로 변환
+                    validated["time_expressions"][i] = {
+                        "expression": expr,
+                        "parsed_date": None
+                    }
+        
         return validated
     
     async def create_embedding(self, text: str) -> List[float]:
@@ -169,9 +212,12 @@ class MemoRefinerService:
         텍스트에 대한 임베딩 벡터를 생성합니다.
         """
         try:
-            # 원본 메모와 정제된 요약을 결합하여 임베딩 생성
-            embedding = await self.embeddings.aembed_query(text)
-            return embedding
+            # OpenAI 임베딩 API 호출
+            response = await self.client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=text
+            )
+            return response.data[0].embedding
         except Exception as e:
             raise Exception(f"임베딩 생성 중 오류가 발생했습니다: {str(e)}")
     
@@ -319,17 +365,34 @@ class MemoRefinerService:
 필요 조치: {', '.join(refined_memo.get('required_actions', []))}
 """
             
-            # LangChain 체인 구성: 프롬프트 -> LLM
-            chain = self.analysis_prompt_template | self.llm
+            # 분석 프롬프트
+            analysis_prompt = f"""고객 정보와 메모를 분석하여 적절한 대응 방안을 제시하세요.
+
+고객 유형: {customer_type}
+계약 상태: {contract_status}
+정제된 메모: {refined_memo_text}
+
+다음 관점에서 종합적으로 분석해주세요:
+1. 고객의 현재 상황과 니즈 파악
+2. 고객 유형과 계약 상태를 고려한 맞춤형 대응 방안
+3. 우선순위가 높은 조치사항
+4. 추가로 확인이 필요한 정보
+5. 예상되는 고객 만족도 및 위험 요소
+
+분석 결과를 구체적이고 실행 가능한 형태로 제시하세요."""
             
-            # 비동기 실행
-            result = await chain.ainvoke({
-                "customer_type": customer_type,
-                "contract_status": contract_status,
-                "refined_memo": refined_memo_text
-            })
+            # OpenAI API 호출
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "당신은 보험업계 전문가입니다."},
+                    {"role": "user", "content": analysis_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=1000
+            )
             
-            return result.content
+            return response.choices[0].message.content
             
         except Exception as e:
             raise Exception(f"조건부 분석 수행 중 오류가 발생했습니다: {str(e)}")

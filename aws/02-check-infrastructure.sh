@@ -6,20 +6,35 @@
 set -e
 
 REGION=${1:-ap-northeast-2}
-PROJECT_NAME="momentir-ga-llm"
+PROJECT_NAME="momentir-cx-llm"  # 변경된 프로젝트 이름
 
 echo "🔍 AWS 인프라 상태 확인 중..."
 echo "Region: $REGION"
 echo "Project: $PROJECT_NAME"
 echo "=========================================="
 
-# 1. ECR 리포지토리 확인
+# 1. ECR 리포지토리 확인 (기존 momentir-ga-llm도 확인)
 echo "📦 ECR 리포지토리 상태:"
-aws ecr describe-repositories \
-    --repository-names $PROJECT_NAME \
-    --region $REGION \
-    --query 'repositories[0].{Name:repositoryName,URI:repositoryUri,Created:createdAt}' \
-    --output table 2>/dev/null || echo "❌ ECR 리포지토리가 존재하지 않습니다."
+OLD_PROJECT_NAME="momentir-ga-llm"
+
+if aws ecr describe-repositories --repository-names $PROJECT_NAME --region $REGION --no-cli-pager &>/dev/null; then
+    aws ecr describe-repositories \
+        --repository-names $PROJECT_NAME \
+        --region $REGION \
+        --query 'repositories[0].{Name:repositoryName,URI:repositoryUri,Created:createdAt}' \
+        --output table \
+        --no-cli-pager
+elif aws ecr describe-repositories --repository-names $OLD_PROJECT_NAME --region $REGION --no-cli-pager &>/dev/null; then
+    echo "ℹ️  기존 ECR 리포지토리 사용 중: $OLD_PROJECT_NAME"
+    aws ecr describe-repositories \
+        --repository-names $OLD_PROJECT_NAME \
+        --region $REGION \
+        --query 'repositories[0].{Name:repositoryName,URI:repositoryUri,Created:createdAt}' \
+        --output table \
+        --no-cli-pager
+else
+    echo "❌ ECR 리포지토리가 존재하지 않습니다."
+fi
 
 echo ""
 
@@ -56,7 +71,8 @@ aws ecs describe-clusters \
     --clusters $PROJECT_NAME-cluster \
     --query 'clusters[0].{Name:clusterName,Status:status,ActiveServices:activeServicesCount,RunningTasks:runningTasksCount}' \
     --output table \
-    --region $REGION 2>/dev/null || echo "❌ ECS 클러스터가 존재하지 않습니다."
+    --region $REGION \
+    --no-cli-pager 2>/dev/null || echo "❌ ECS 클러스터가 존재하지 않습니다."
 
 echo ""
 

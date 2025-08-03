@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import MemoRefineRequest, RefinedMemoResponse, MemoAnalyzeRequest, MemoAnalyzeResponse, QuickSaveRequest, QuickSaveResponse, ErrorResponse
+from app.models import MemoRefineRequest, RefinedMemoResponse, MemoAnalyzeRequest, MemoAnalyzeResponse, QuickSaveRequest, QuickSaveResponse, ErrorResponse, TimeExpressionResponse, InsuranceInfoResponse
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
 from datetime import datetime
@@ -84,12 +84,37 @@ async def refine_memo(request: MemoRefineRequest, db: AsyncSession = Depends(get
         
         refined_data = result["refined_data"]
         
+        # 시간 표현 변환
+        time_expressions = []
+        for expr in refined_data.get("time_expressions", []):
+            if isinstance(expr, dict):
+                time_expressions.append(TimeExpressionResponse(
+                    expression=expr.get("expression", ""),
+                    parsed_date=expr.get("parsed_date")
+                ))
+            elif isinstance(expr, str):
+                time_expressions.append(TimeExpressionResponse(
+                    expression=expr,
+                    parsed_date=None
+                ))
+        
+        # 보험 정보 변환
+        insurance_data = refined_data.get("insurance_info", {})
+        insurance_info = InsuranceInfoResponse(
+            products=insurance_data.get("products", []),
+            premium_amount=insurance_data.get("premium_amount"),
+            interest_products=insurance_data.get("interest_products", []),
+            policy_changes=insurance_data.get("policy_changes", [])
+        )
+        
         return RefinedMemoResponse(
             memo_id=result["memo_id"],
             summary=refined_data.get("summary", ""),
+            status=refined_data.get("status", ""),
             keywords=refined_data.get("keywords", []),
-            customer_status=refined_data.get("customer_status", ""),
+            time_expressions=time_expressions,
             required_actions=refined_data.get("required_actions", []),
+            insurance_info=insurance_info,
             original_memo=request.memo,
             similar_memos_count=result["similar_memos_count"],
             processed_at=datetime.fromisoformat(result["created_at"].replace('Z', '+00:00'))

@@ -9,6 +9,9 @@ from pathlib import Path
 # 현재 파일의 부모 디렉토리를 sys.path에 추가
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+# 마이그레이션을 위해 환경변수 설정
+os.environ.setdefault("DATABASE_URL", "postgresql://user:password@localhost:5432/insurance_memo")
+
 from app.database import Base
 from app.db_models import CustomerMemo, AnalysisResult
 
