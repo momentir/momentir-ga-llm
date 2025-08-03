@@ -1,12 +1,62 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import MemoRefineRequest, RefinedMemoResponse, MemoAnalyzeRequest, MemoAnalyzeResponse, ErrorResponse
+from app.models import MemoRefineRequest, RefinedMemoResponse, MemoAnalyzeRequest, MemoAnalyzeResponse, QuickSaveRequest, QuickSaveResponse, ErrorResponse
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
 from datetime import datetime
 
 router = APIRouter(prefix="/api/memo", tags=["memo"])
 memo_refiner = MemoRefinerService()
+
+
+@router.post("/quick-save", response_model=QuickSaveResponse)
+async def quick_save_memo(request: QuickSaveRequest, db: AsyncSession = Depends(get_db)):
+    """
+    메모를 빠르게 저장합니다 (AI 정제 없이 원본만 저장).
+    
+    - **customer_id**: 고객 ID
+    - **content**: 메모 내용
+    
+    기능:
+    - 원본 메모를 즉시 저장 (draft 상태)
+    - AI 정제 과정 없이 빠른 저장
+    - 나중에 /refine 엔드포인트로 정제 가능
+    """
+    try:
+        if not request.content or not request.content.strip():
+            raise HTTPException(
+                status_code=400, 
+                detail="메모 내용이 비어있습니다."
+            )
+            
+        if not request.customer_id or not request.customer_id.strip():
+            raise HTTPException(
+                status_code=400, 
+                detail="고객 ID가 비어있습니다."
+            )
+        
+        # 빠른 메모 저장
+        result = await memo_refiner.quick_save_memo(
+            customer_id=request.customer_id,
+            content=request.content,
+            db_session=db
+        )
+        
+        return QuickSaveResponse(
+            memo_id=result["memo_id"],
+            customer_id=result["customer_id"],
+            content=result["content"],
+            status=result["status"],
+            saved_at=datetime.fromisoformat(result["saved_at"].replace('Z', '+00:00'))
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"메모 저장 중 오류가 발생했습니다: {str(e)}"
+        )
 
 
 @router.post("/refine", response_model=RefinedMemoResponse)

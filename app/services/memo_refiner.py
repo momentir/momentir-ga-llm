@@ -192,6 +192,7 @@ class MemoRefinerService:
                 id=uuid.uuid4(),
                 original_memo=original_memo,
                 refined_memo=refined_data,
+                status="refined",
                 embedding=embedding_vector
             )
             
@@ -399,3 +400,39 @@ class MemoRefinerService:
             
         except Exception as e:
             raise Exception(f"메모 및 분석 결과 조회 중 오류가 발생했습니다: {str(e)}")
+    
+    async def quick_save_memo(self, 
+                             customer_id: str, 
+                             content: str, 
+                             db_session: AsyncSession,
+                             author: Optional[str] = None) -> Dict[str, Any]:
+        """
+        빠른 메모 저장 - AI 정제 없이 원본 메모만 저장 (draft 상태)
+        """
+        try:
+            # 데이터베이스 모델 생성 (draft 상태)
+            memo_record = CustomerMemo(
+                id=uuid.uuid4(),
+                customer_id=customer_id,
+                original_memo=content,
+                refined_memo=None,  # 정제되지 않은 상태
+                status="draft",
+                author=author
+            )
+            
+            # 데이터베이스에 저장
+            db_session.add(memo_record)
+            await db_session.commit()
+            await db_session.refresh(memo_record)
+            
+            return {
+                "memo_id": str(memo_record.id),
+                "customer_id": memo_record.customer_id,
+                "content": memo_record.original_memo,
+                "status": memo_record.status,
+                "saved_at": memo_record.created_at.isoformat()
+            }
+            
+        except Exception as e:
+            await db_session.rollback()
+            raise Exception(f"빠른 메모 저장 중 오류가 발생했습니다: {str(e)}")

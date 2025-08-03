@@ -33,6 +33,19 @@ class MemoAnalyzeResponse(BaseModel):
     analyzed_at: datetime = Field(default_factory=datetime.now, description="분석 시간")
 
 
+class QuickSaveRequest(BaseModel):
+    customer_id: str = Field(..., description="고객 ID")
+    content: str = Field(..., description="메모 내용")
+
+
+class QuickSaveResponse(BaseModel):
+    memo_id: str = Field(..., description="저장된 메모 ID")
+    customer_id: str = Field(..., description="고객 ID")
+    content: str = Field(..., description="저장된 메모 내용")
+    status: str = Field(default="draft", description="메모 상태 (draft)")
+    saved_at: datetime = Field(default_factory=datetime.now, description="저장 시간")
+
+
 class ErrorResponse(BaseModel):
     error: str = Field(..., description="에러 메시지")
     detail: Optional[str] = Field(None, description="상세 에러 정보")

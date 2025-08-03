@@ -8,12 +8,15 @@ from app.database import Base
 
 
 class CustomerMemo(Base):
-    """고객 메모 테이블 - PROJECT_CONTEXT.md의 customer_memos 스키마"""
+    """고객 메모 테이블 - PROJECT_CONTEXT_NEW.md의 memos 스키마"""
     __tablename__ = "customer_memos"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    customer_id = Column(String(255), nullable=True, comment="고객 ID")
     original_memo = Column(Text, nullable=False, comment="원본 고객 메모")
-    refined_memo = Column(JSONB, nullable=False, comment="정제된 메모 (JSON 형태)")
+    refined_memo = Column(JSONB, nullable=True, comment="정제된 메모 (JSON 형태)")
+    status = Column(String(20), default="draft", comment="메모 상태: draft, refined, confirmed")
+    author = Column(String(100), nullable=True, comment="작성자")
     embedding = Column(Vector(1536), nullable=True, comment="OpenAI embedding vector")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="생성 시간")
     

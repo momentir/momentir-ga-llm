@@ -46,6 +46,7 @@ async def root():
         "message": "보험계약자 메모 정제 API",
         "version": "1.0.0",
         "endpoints": {
+            "memo_quick_save": "/api/memo/quick-save",
             "memo_refine": "/api/memo/refine",
             "memo_analyze": "/api/memo/analyze", 
             "memo_get": "/api/memo/memo/{memo_id}",
