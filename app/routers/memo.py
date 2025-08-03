@@ -44,7 +44,7 @@ async def quick_save_memo(request: QuickSaveRequest, db: AsyncSession = Depends(
         
         return QuickSaveResponse(
             memo_id=result["memo_id"],
-            customer_id=result["customer_id"],
+            customer_id=str(result["customer_id"]),
             content=result["content"],
             status=result["status"],
             saved_at=datetime.fromisoformat(result["saved_at"].replace('Z', '+00:00'))
