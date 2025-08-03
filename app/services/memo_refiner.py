@@ -318,7 +318,7 @@ class MemoRefinerService:
                 original_memo=original_memo,
                 refined_memo=refined_data,
                 status="refined",
-                embedding=embedding_vector  # None일 수 있음
+                embedding=embedding_vector  # JSONB로 저장됨
             )
             
             # 데이터베이스에 저장
@@ -326,11 +326,30 @@ class MemoRefinerService:
             await db_session.commit()
             await db_session.refresh(memo_record)
             
+            logger.info(f"메모 저장 완료 (임베딩 포함): {memo_record.id}")
             return memo_record
             
         except Exception as e:
             await db_session.rollback()
             raise Exception(f"메모 저장 중 오류가 발생했습니다: {str(e)}")
+    
+    def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """
+        두 벡터 간의 코사인 유사도를 계산합니다.
+        """
+        import math
+        
+        if len(vec1) != len(vec2):
+            return 0.0
+            
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        magnitude1 = math.sqrt(sum(a * a for a in vec1))
+        magnitude2 = math.sqrt(sum(b * b for b in vec2))
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+            
+        return dot_product / (magnitude1 * magnitude2)
     
     async def find_similar_memos(self, 
                                 memo: str, 
@@ -338,40 +357,53 @@ class MemoRefinerService:
                                 limit: int = 5) -> List[CustomerMemo]:
         """
         유사한 메모를 벡터 검색으로 찾습니다.
-        임베딩이 사용 불가능한 경우 최근 메모를 반환합니다.
+        Python 기반 코사인 유사도를 사용합니다.
         """
         try:
             # 입력 메모의 임베딩 생성
             query_embedding = await self.create_embedding(memo)
             
             if query_embedding is not None:
-                # pgvector를 사용한 유사도 검색
+                # 모든 임베딩이 있는 메모들을 가져오기
                 stmt = select(CustomerMemo).where(
                     CustomerMemo.embedding.is_not(None)
-                ).order_by(
-                    CustomerMemo.embedding.cosine_distance(query_embedding)
-                ).limit(limit)
+                )
+                result = await db_session.execute(stmt)
+                all_memos = result.scalars().all()
+                
+                if not all_memos:
+                    logger.info("임베딩이 있는 메모가 없습니다. 최근 메모를 반환합니다.")
+                    return await self._get_recent_memos(db_session, limit)
+                
+                # 코사인 유사도 계산 및 정렬
+                memo_similarities = []
+                for memo_record in all_memos:
+                    if memo_record.embedding and isinstance(memo_record.embedding, list):
+                        similarity = self._calculate_cosine_similarity(query_embedding, memo_record.embedding)
+                        memo_similarities.append((memo_record, similarity))
+                
+                # 유사도 기준으로 정렬하고 상위 N개 반환
+                memo_similarities.sort(key=lambda x: x[1], reverse=True)
+                similar_memos = [memo for memo, _ in memo_similarities[:limit]]
+                
+                logger.info(f"유사도 검색 완료: {len(similar_memos)}개 메모 반환")
+                return similar_memos
             else:
-                # 임베딩이 없는 경우 최근 메모를 반환
-                logger.warning("임베딩을 사용할 수 없어 최근 메모를 반환합니다.")
-                stmt = select(CustomerMemo).order_by(
-                    CustomerMemo.created_at.desc()
-                ).limit(limit)
-            
-            result = await db_session.execute(stmt)
-            similar_memos = result.scalars().all()
-            
-            return similar_memos
+                logger.warning("쿼리 임베딩 생성 실패, 최근 메모를 반환합니다.")
+                return await self._get_recent_memos(db_session, limit)
             
         except Exception as e:
             logger.warning(f"유사 메모 검색 실패, 최근 메모를 반환합니다: {str(e)}")
-            # 폴백: 최근 메모 반환
-            try:
-                stmt = select(CustomerMemo).order_by(CustomerMemo.created_at.desc()).limit(limit)
-                result = await db_session.execute(stmt)
-                return result.scalars().all()
-            except:
-                return []
+            return await self._get_recent_memos(db_session, limit)
+    
+    async def _get_recent_memos(self, db_session: AsyncSession, limit: int) -> List[CustomerMemo]:
+        """최근 메모들을 반환하는 헬퍼 함수"""
+        try:
+            stmt = select(CustomerMemo).order_by(CustomerMemo.created_at.desc()).limit(limit)
+            result = await db_session.execute(stmt)
+            return result.scalars().all()
+        except:
+            return []
     
     async def refine_and_save_memo(self, 
                                   memo: str, 
