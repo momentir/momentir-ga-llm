@@ -4,7 +4,7 @@ import openai
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db_models import CustomerMemo, AnalysisResult
+from app.db_models import CustomerMemo, AnalysisResult, Customer
 import json
 import re
 import uuid
@@ -308,10 +308,10 @@ class MemoRefinerService:
                                          conditions: Dict[str, Any], 
                                          db_session: AsyncSession) -> Dict[str, Any]:
         """
-        기존 메모를 조건에 따라 분석합니다.
+        기존 메모를 조건에 따라 분석합니다. (고객 데이터 연동 개선)
         """
         try:
-            # 1. 메모 조회
+            # 1. 메모 조회 (고객 정보 포함)
             stmt = select(CustomerMemo).where(CustomerMemo.id == uuid.UUID(memo_id))
             result = await db_session.execute(stmt)
             memo_record = result.scalar_one_or_none()
@@ -319,13 +319,32 @@ class MemoRefinerService:
             if not memo_record:
                 raise Exception(f"메모 ID {memo_id}를 찾을 수 없습니다.")
             
-            # 2. 조건부 분석 수행
-            analysis_result = await self.perform_conditional_analysis(
+            # 2. 고객 정보 조회 (있는 경우)
+            customer_data = None
+            if memo_record.customer_id:
+                customer_stmt = select(Customer).where(Customer.customer_id == memo_record.customer_id)
+                customer_result = await db_session.execute(customer_stmt)
+                customer_record = customer_result.scalar_one_or_none()
+                
+                if customer_record:
+                    customer_data = {
+                        "name": customer_record.name,
+                        "age": self._calculate_age(customer_record.date_of_birth) if customer_record.date_of_birth else None,
+                        "occupation": customer_record.occupation,
+                        "gender": customer_record.gender,
+                        "interests": customer_record.interests or [],
+                        "life_events": customer_record.life_events or [],
+                        "insurance_products": customer_record.insurance_products or []
+                    }
+            
+            # 3. 고객 데이터를 포함한 조건부 분석 수행
+            analysis_result = await self.perform_enhanced_conditional_analysis(
                 refined_memo=memo_record.refined_memo,
-                conditions=conditions
+                conditions=conditions,
+                customer_data=customer_data
             )
             
-            # 3. 분석 결과를 데이터베이스에 저장
+            # 4. 분석 결과를 데이터베이스에 저장
             analysis_record = await self.save_analysis_to_db(
                 memo_id=memo_record.id,
                 conditions=conditions,
@@ -340,6 +359,7 @@ class MemoRefinerService:
                 "analysis": analysis_result,
                 "original_memo": memo_record.original_memo,
                 "refined_memo": memo_record.refined_memo,
+                "customer_data": customer_data,
                 "analyzed_at": analysis_record.created_at.isoformat()
             }
             
@@ -499,3 +519,175 @@ class MemoRefinerService:
         except Exception as e:
             await db_session.rollback()
             raise Exception(f"빠른 메모 저장 중 오류가 발생했습니다: {str(e)}")
+    
+    def _calculate_age(self, birth_date) -> Optional[int]:
+        """
+        생년월일로부터 나이를 계산합니다.
+        """
+        if not birth_date:
+            return None
+        
+        from datetime import date
+        today = date.today()
+        
+        if hasattr(birth_date, 'date'):
+            birth_date = birth_date.date()
+        elif isinstance(birth_date, str):
+            try:
+                birth_date = datetime.strptime(birth_date, '%Y-%m-%d').date()
+            except:
+                return None
+        
+        return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    
+    async def perform_enhanced_conditional_analysis(self, 
+                                                  refined_memo: Dict[str, Any], 
+                                                  conditions: Dict[str, Any],
+                                                  customer_data: Optional[Dict[str, Any]] = None) -> str:
+        """
+        고객 데이터를 포함한 향상된 조건부 분석을 수행합니다.
+        """
+        try:
+            # 조건에서 주요 정보 추출
+            customer_type = conditions.get("customer_type", "일반")
+            contract_status = conditions.get("contract_status", "활성")
+            analysis_focus = conditions.get("analysis_focus", ["종합분석"])
+            
+            # 정제된 메모를 텍스트로 변환
+            refined_memo_text = f"""
+요약: {refined_memo.get('summary', '')}
+키워드: {', '.join(refined_memo.get('keywords', []))}
+고객 상태: {refined_memo.get('status', '')}
+필요 조치: {', '.join(refined_memo.get('required_actions', []))}
+보험 정보: {refined_memo.get('insurance_info', {})}
+시간 표현: {refined_memo.get('time_expressions', [])}
+"""
+            
+            # 고객 정보 텍스트 구성
+            customer_info_text = "고객 정보 없음"
+            if customer_data:
+                customer_info_text = f"""
+고객명: {customer_data.get('name', '미상')}
+나이: {customer_data.get('age', '미상')}세
+직업: {customer_data.get('occupation', '미상')}
+성별: {customer_data.get('gender', '미상')}
+관심사: {', '.join(customer_data.get('interests', []))}
+인생 이벤트: {customer_data.get('life_events', [])}
+보험 가입 현황: {customer_data.get('insurance_products', [])}
+"""
+            
+            # 향상된 분석 프롬프트
+            analysis_prompt = f"""당신은 보험업계의 전문 분석가입니다. 다음 정보를 종합하여 맞춤형 분석을 제공하세요.
+
+=== 고객 정보 ===
+{customer_info_text}
+
+=== 메모 분석 내용 ===
+{refined_memo_text}
+
+=== 분석 조건 ===
+고객 유형: {customer_type}
+계약 상태: {contract_status}
+분석 포커스: {', '.join(analysis_focus)}
+
+=== 분석 요청 사항 ===
+다음 관점에서 종합적으로 분석해주세요:
+
+1. **고객 프로필 분석**
+   - 현재 고객의 인생 단계와 니즈 파악
+   - 메모 내용과 고객 정보의 일치성 검토
+   - 잠재적 위험 요소 및 기회 식별
+
+2. **맞춤형 대응 전략**
+   - 고객 유형과 특성을 고려한 커뮤니케이션 방식
+   - 개인화된 상품 추천 및 서비스 제안
+   - 고객 만족도 향상을 위한 구체적 액션
+
+3. **우선순위 및 타이밍**
+   - 즉시 처리가 필요한 사항
+   - 중장기적 관리 방안
+   - 최적의 접촉 시점과 방법
+
+4. **위험 관리**
+   - 고객 이탈 위험 평가
+   - 컴플라이언스 및 규정 준수 체크
+   - 예상되는 문제점과 해결 방안
+
+5. **성과 측정**
+   - 분석 결과의 실행 가능성 평가
+   - 성공 지표 및 KPI 제안
+   - 후속 조치 및 모니터링 계획
+
+분석 결과는 실무진이 바로 활용할 수 있도록 구체적이고 실행 가능한 형태로 제시하세요."""
+
+            # OpenAI API 호출
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "당신은 20년 경력의 보험업계 전문 분석가입니다. 고객 데이터와 메모를 종합하여 실무진에게 유용한 인사이트를 제공합니다."},
+                    {"role": "user", "content": analysis_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=2000
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            raise Exception(f"향상된 조건부 분석 수행 중 오류가 발생했습니다: {str(e)}")
+    
+    async def get_customer_analytics(self, customer_id: str, db_session: AsyncSession) -> Dict[str, Any]:
+        """
+        특정 고객의 분석 통계를 조회합니다.
+        """
+        try:
+            # 고객 정보 조회
+            customer_stmt = select(Customer).where(Customer.customer_id == uuid.UUID(customer_id))
+            customer_result = await db_session.execute(customer_stmt)
+            customer = customer_result.scalar_one_or_none()
+            
+            if not customer:
+                raise Exception(f"고객 ID {customer_id}를 찾을 수 없습니다.")
+            
+            # 고객의 메모 통계
+            memo_stmt = select(CustomerMemo).where(CustomerMemo.customer_id == customer.customer_id)
+            memo_result = await db_session.execute(memo_stmt)
+            memos = memo_result.scalars().all()
+            
+            # 분석 결과 통계
+            analysis_stmt = select(AnalysisResult).join(CustomerMemo).where(CustomerMemo.customer_id == customer.customer_id)
+            analysis_result = await db_session.execute(analysis_stmt)
+            analyses = analysis_result.scalars().all()
+            
+            # 통계 계산
+            total_memos = len(memos)
+            refined_memos = len([m for m in memos if m.status == "refined"])
+            total_analyses = len(analyses)
+            
+            # 최근 활동
+            recent_memo = max(memos, key=lambda x: x.created_at) if memos else None
+            recent_analysis = max(analyses, key=lambda x: x.created_at) if analyses else None
+            
+            return {
+                "customer_id": str(customer.customer_id),
+                "customer_name": customer.name,
+                "statistics": {
+                    "total_memos": total_memos,
+                    "refined_memos": refined_memos,
+                    "total_analyses": total_analyses,
+                    "refinement_rate": refined_memos / total_memos if total_memos > 0 else 0
+                },
+                "recent_activity": {
+                    "last_memo_date": recent_memo.created_at.isoformat() if recent_memo else None,
+                    "last_analysis_date": recent_analysis.created_at.isoformat() if recent_analysis else None
+                },
+                "customer_profile": {
+                    "age": self._calculate_age(customer.date_of_birth),
+                    "occupation": customer.occupation,
+                    "interests_count": len(customer.interests or []),
+                    "insurance_products_count": len(customer.insurance_products or [])
+                }
+            }
+            
+        except Exception as e:
+            raise Exception(f"고객 분석 통계 조회 중 오류가 발생했습니다: {str(e)}")

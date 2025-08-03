@@ -1,0 +1,94 @@
+{
+  "customer_profile": {
+    "basic_info": {
+      "customer_id": "string",
+      "name": "string",
+      "age": "number",
+      "gender": "string",
+      "contact": "string",
+      "occupation": "string",
+      "income_level": "string",
+      "family_status": "string"
+    },
+    "insurance_status": {
+      "current_products": [
+        {
+          "product_type": "string",
+          "provider": "string",
+          "premium": "number",
+          "coverage_amount": "number",
+          "start_date": "string",
+          "renewal_date": "string",
+          "status": "string"
+        }
+      ],
+      "total_premium": "number",
+      "coverage_gaps": ["string"],
+      "risk_profile": "string"
+    },
+    "life_stage": {
+      "current_stage": "string",
+      "life_events": [
+        {
+          "event_type": "string",
+          "date": "string",
+          "impact_level": "string",
+          "insurance_needs": ["string"]
+        }
+      ],
+      "dependents": [
+        {
+          "relationship": "string",
+          "age": "number",
+          "coverage_needs": ["string"]
+        }
+      ]
+    },
+    "financial_profile": {
+      "income_stability": "string",
+      "savings_rate": "number",
+      "investment_experience": "string",
+      "financial_goals": ["string"],
+      "budget_for_insurance": "number"
+    },
+    "preferences": {
+      "communication_style": "string",
+      "preferred_contact_method": "string",
+      "preferred_contact_time": "string",
+      "decision_making_style": "string",
+      "price_sensitivity": "string"
+    }
+  },
+  "interaction_history": {
+    "last_contact_date": "string",
+    "contact_frequency": "string",
+    "interaction_types": ["string"],
+    "sentiment_trend": "string",
+    "key_concerns": ["string"],
+    "previous_recommendations": [
+      {
+        "date": "string",
+        "recommendation": "string",
+        "status": "string",
+        "follow_up_required": "boolean"
+      }
+    ]
+  },
+  "analysis_context": {
+    "analysis_type": "string",
+    "priority_level": "string",
+    "deadline": "string",
+    "specific_focus": ["string"],
+    "regulatory_considerations": ["string"]
+  },
+  "market_conditions": {
+    "economic_indicators": {
+      "interest_rates": "number",
+      "inflation_rate": "number",
+      "market_volatility": "string"
+    },
+    "industry_trends": ["string"],
+    "competitive_landscape": ["string"],
+    "regulatory_changes": ["string"]
+  }
+}
