@@ -7,9 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from app.db_models import Customer
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
+from app.utils.langsmith_config import langsmith_manager, trace_llm_call
 from datetime import datetime, date
 import json
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CustomerService:
@@ -175,11 +179,14 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
+    @trace_llm_call("엑셀 컬럼 매핑", {"model": "gpt-4", "function": "map_excel_columns"})
     async def map_excel_columns(self, excel_columns: List[str]) -> Dict[str, Any]:
         """
         LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다.
         """
         try:
+            logger.info(f"엑셀 컬럼 매핑 시작: {excel_columns}")
+            
             # 프롬프트 구성
             user_prompt = f"""엑셀 컬럼명들을 표준 스키마로 매핑해주세요:
 
@@ -214,6 +221,22 @@ class CustomerService:
                     if mapped_field == "unmapped"
                 ]
                 
+                # LangSmith에 수동 로깅
+                langsmith_manager.log_llm_call(
+                    model="gpt-4",
+                    prompt=f"시스템: {self.mapping_prompt[:100]}...\n사용자: {user_prompt}",
+                    response=result_text,
+                    metadata={
+                        "function": "map_excel_columns",
+                        "input_columns": excel_columns,
+                        "mapped_count": len([v for v in mapping.values() if v != "unmapped"]),
+                        "unmapped_count": len(unmapped_columns),
+                        "confidence_score": confidence_score
+                    }
+                )
+                
+                logger.info(f"엑셀 컬럼 매핑 완료: 신뢰도 {confidence_score}")
+                
                 return {
                     "mapping": mapping,
                     "unmapped_columns": unmapped_columns,
@@ -222,6 +245,7 @@ class CustomerService:
 
             except json.JSONDecodeError:
                 # JSON 파싱 실패 시 기본 매핑 반환
+                logger.warning("JSON 파싱 실패, 기본 매핑 반환")
                 return {
                     "mapping": {col: "unmapped" for col in excel_columns},
                     "unmapped_columns": excel_columns,

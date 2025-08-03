@@ -5,9 +5,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db_models import CustomerMemo, AnalysisResult, Customer
+from app.utils.langsmith_config import langsmith_manager, trace_llm_call
 import json
 import re
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TimeExpression(BaseModel):
@@ -135,11 +139,14 @@ class MemoRefinerService:
         
         self.parser = MemoRefinementParser()
     
+    @trace_llm_call("메모 정제", {"model": "gpt-4", "function": "refine_memo"})
     async def refine_memo(self, memo: str) -> Dict[str, Any]:
         """
         OpenAI를 사용하여 메모를 정제하는 메인 메서드
         """
         try:
+            logger.info(f"메모 정제 시작: {memo[:50]}...")
+            
             # OpenAI API 호출
             response = await self.client.chat.completions.create(
                 model="gpt-4",
@@ -154,15 +161,29 @@ class MemoRefinerService:
             # 응답 텍스트 추출
             result_text = response.choices[0].message.content
             
+            # LangSmith에 수동 로깅
+            langsmith_manager.log_llm_call(
+                model="gpt-4",
+                prompt=f"시스템: {self.system_prompt[:100]}...\n사용자: 메모: {memo}",
+                response=result_text,
+                metadata={
+                    "function": "refine_memo",
+                    "memo_length": len(memo),
+                    "response_length": len(result_text)
+                }
+            )
+            
             # 파서를 통해 결과 파싱
             result = self.parser.parse(result_text)
             
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
             
+            logger.info("메모 정제 완료")
             return validated_result
             
         except Exception as e:
+            logger.error(f"메모 정제 중 오류: {str(e)}")
             raise Exception(f"메모 정제 중 오류가 발생했습니다: {str(e)}")
     
     def _validate_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -207,18 +228,39 @@ class MemoRefinerService:
         
         return validated
     
+    @trace_llm_call("임베딩 생성", {"model": "text-embedding-ada-002", "function": "create_embedding"})
     async def create_embedding(self, text: str) -> List[float]:
         """
         텍스트에 대한 임베딩 벡터를 생성합니다.
         """
         try:
+            logger.info(f"임베딩 생성 시작: {text[:50]}...")
+            
             # OpenAI 임베딩 API 호출
             response = await self.client.embeddings.create(
                 model="text-embedding-ada-002",
                 input=text
             )
-            return response.data[0].embedding
+            
+            embedding = response.data[0].embedding
+            
+            # LangSmith에 수동 로깅
+            langsmith_manager.log_llm_call(
+                model="text-embedding-ada-002",
+                prompt=text,
+                response=f"임베딩 벡터 (차원: {len(embedding)})",
+                metadata={
+                    "function": "create_embedding",
+                    "text_length": len(text),
+                    "embedding_dimension": len(embedding)
+                }
+            )
+            
+            logger.info("임베딩 생성 완료")
+            return embedding
+            
         except Exception as e:
+            logger.error(f"임베딩 생성 중 오류: {str(e)}")
             raise Exception(f"임베딩 생성 중 오류가 발생했습니다: {str(e)}")
     
     async def save_memo_to_db(self, 
@@ -540,6 +582,7 @@ class MemoRefinerService:
         
         return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
     
+    @trace_llm_call("향상된 조건부 분석", {"model": "gpt-4", "function": "perform_enhanced_conditional_analysis"})
     async def perform_enhanced_conditional_analysis(self, 
                                                   refined_memo: Dict[str, Any], 
                                                   conditions: Dict[str, Any],
@@ -548,6 +591,8 @@ class MemoRefinerService:
         고객 데이터를 포함한 향상된 조건부 분석을 수행합니다.
         """
         try:
+            logger.info("향상된 조건부 분석 시작")
+            
             # 조건에서 주요 정보 추출
             customer_type = conditions.get("customer_type", "일반")
             contract_status = conditions.get("contract_status", "활성")
@@ -631,9 +676,27 @@ class MemoRefinerService:
                 max_tokens=2000
             )
             
-            return response.choices[0].message.content
+            analysis_result = response.choices[0].message.content
+            
+            # LangSmith에 수동 로깅
+            langsmith_manager.log_llm_call(
+                model="gpt-4",
+                prompt=analysis_prompt[:500] + "...",
+                response=analysis_result,
+                metadata={
+                    "function": "perform_enhanced_conditional_analysis",
+                    "customer_type": customer_type,
+                    "contract_status": contract_status,
+                    "has_customer_data": customer_data is not None,
+                    "analysis_focus": analysis_focus
+                }
+            )
+            
+            logger.info("향상된 조건부 분석 완료")
+            return analysis_result
             
         except Exception as e:
+            logger.error(f"향상된 조건부 분석 중 오류: {str(e)}")
             raise Exception(f"향상된 조건부 분석 수행 중 오류가 발생했습니다: {str(e)}")
     
     async def get_customer_analytics(self, customer_id: str, db_session: AsyncSession) -> Dict[str, Any]:
