@@ -1,50 +1,68 @@
-# Momentir GA LLM - 보험계약자 메모 정제 API
+# 보험계약자 메모 정제 시스템
 
-보험계약자의 고객 메모를 LLM을 통해 정제하고 분석하는 FastAPI 기반 시스템입니다.
+보험 설계사가 고객 메모를 LLM을 통해 정제하고 분석하는 CRM 시스템입니다.
 
-## ✨ 주요 기능
+## 🎯 프로젝트 개요
 
-- **메모 정제**: 고객 메모를 구조화된 형태로 정제
-- **메모 분석**: 정제된 메모에서 핵심 정보 추출
-- **벡터 검색**: pgvector를 활용한 의미 기반 메모 검색
-- **PostgreSQL 통합**: 완전한 데이터 영속성
+### 핵심 기능
+- **메모 정제**: 입력된 고객 메모를 구조화된 형태로 정제
+- **조건부 분석**: 고객 데이터와 조건에 따른 LLM 해석 제공
+- **엑셀 일괄 처리**: 다수의 고객 데이터를 엑셀로 업로드하여 일괄 처리
+- **고객 데이터 관리**: 완전한 CRUD API와 지능형 검색
+- **이벤트 관리**: 메모 분석 후 액션 아이템 생성 및 관리
 
-## 🛠️ 기술 스택
+### 기술 스택
+- **백엔드**: Python 3.11, FastAPI
+- **LLM**: OpenAI GPT-4, LangChain
+- **데이터베이스**: PostgreSQL + pgvector (프로덕션), SQLite (개발)
+- **인프라**: AWS (ECS, RDS, ALB)
 
-- **Backend**: FastAPI, Python 3.11
-- **Database**: PostgreSQL + pgvector
-- **LLM**: OpenAI GPT (LangChain 통합)
-- **Container**: Docker, Docker Compose
-- **Cloud**: AWS ECS Fargate + RDS
-- **CI/CD**: GitHub Actions
+## 🚀 빠른 시작
 
-## 🚀 로컬 개발 환경 설정
-
-### 1. 저장소 클론 및 환경 설정
+### 1. 프로젝트 클론 및 초기 설정
 
 ```bash
+# 프로젝트 클론
 git clone <repository-url>
 cd momentir-ga-llm
 
-# 환경 변수 파일 생성
-cp .env.example .env
-# .env 파일에 실제 API 키 입력
+# 개발 환경 자동 설정
+./scripts/01-setup-development.sh
 ```
 
-### 2. Docker Compose로 로컬 실행
+### 2. 환경변수 설정
+
+`.env` 파일에서 OpenAI API 키 설정:
 
 ```bash
-# 컨테이너 빌드 및 실행
-docker-compose up --build
+# .env 파일 편집
+nano .env
 
-# 백그라운드 실행
-docker-compose up -d --build
+# OPENAI_API_KEY를 실제 키로 변경
+OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 ```
 
-### 3. API 테스트
+### 3. 로컬 서버 실행
 
-- **API 문서**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
+```bash
+# 서버 시작 (자동으로 가상환경 활성화, DB 초기화, 서버 실행)
+./scripts/02-start-local.sh
+```
+
+### 4. API 테스트
+
+```bash
+# 새 터미널에서 API 테스트 실행
+./scripts/03-test-api.sh
+```
+
+## 📖 API 문서
+
+서버 실행 후 다음 URL에서 확인:
+
+- **Swagger UI**: http://127.0.0.1:8000/docs
+- **ReDoc**: http://127.0.0.1:8000/redoc
+- **기본 정보**: http://127.0.0.1:8000/
 
 ## ☁️ AWS 배포
 
@@ -65,16 +83,35 @@ docker-compose up -d --build
 
 3. **코드 푸시** → 자동 배포 시작
 
-## 📡 API 엔드포인트
-
-### 메인 엔드포인트
-- `GET /` - API 정보 및 엔드포인트 목록
-- `GET /health` - 헬스 체크
+## 🔧 주요 API 엔드포인트
 
 ### 메모 관리
-- `POST /api/memo/refine` - 메모 정제
-- `POST /api/memo/analyze` - 메모 분석
-- `GET /api/memo/memo/{memo_id}` - 메모 조회
+```http
+POST /api/memo/quick-save      # 메모 빠른 저장
+POST /api/memo/refine          # 메모 AI 정제
+POST /api/memo/analyze         # 조건부 분석
+GET  /api/memo/memo/{memo_id}  # 메모 조회
+```
+
+### 고객 관리
+```http
+POST /api/customer/create           # 고객 생성
+GET  /api/customer/{customer_id}    # 고객 조회
+PUT  /api/customer/{customer_id}    # 고객 수정
+DELETE /api/customer/{customer_id}  # 고객 삭제
+GET  /api/customer/                 # 고객 목록 (검색, 페이징)
+```
+
+### 엑셀 처리
+```http
+POST /api/customer/excel-upload     # 엑셀 파일 업로드
+POST /api/customer/column-mapping   # 컬럼명 매핑
+```
+
+### 분석 및 통계
+```http
+GET /api/customer/{customer_id}/analytics  # 고객 분석 통계
+```
 
 ## 🗄️ 데이터베이스
 
