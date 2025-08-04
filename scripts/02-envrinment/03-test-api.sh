@@ -18,7 +18,7 @@ if curl -s --fail "${SERVER_URL}/health" > /dev/null; then
     echo "   ✅ 서버 연결 성공"
 else
     echo "   ❌ 서버에 연결할 수 없습니다."
-    echo "   ➤ 서버를 먼저 시작하세요: ./scripts/start-local.sh"
+    echo "   ➤ 서버를 먼저 시작하세요: ./scripts/02-envrinment/02-start-local.sh"
     exit 1
 fi
 

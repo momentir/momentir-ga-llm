@@ -10,7 +10,10 @@ echo "=================================================="
 
 # 현재 디렉토리 확인
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Record system python path before any venv changes
+time="$(date +%s)"
+SYSTEM_PYTHON="$(command -v python3)"
 
 echo "📁 프로젝트 디렉토리: $PROJECT_DIR"
 cd "$PROJECT_DIR"
@@ -18,7 +21,7 @@ cd "$PROJECT_DIR"
 # Python 버전 확인
 echo ""
 echo "🐍 Python 버전 확인 중..."
-python3 --version
+"$SYSTEM_PYTHON" --version
 if [ $? -ne 0 ]; then
     echo "❌ Python 3이 설치되지 않았습니다."
     echo "   macOS: brew install python3"
@@ -47,11 +50,12 @@ if [ -d "venv" ]; then
     if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
         rm -rf venv
         echo "   ➤ 기존 가상환경 삭제"
+        deactivate 2>/dev/null || true
     fi
 fi
 
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    "$SYSTEM_PYTHON" -m venv venv
     echo "   ✅ 가상환경 생성 완료"
 fi
 
@@ -62,13 +66,14 @@ echo "   ✅ 가상환경 활성화"
 # pip 업그레이드
 echo ""
 echo "📦 pip 업그레이드 중..."
-pip install --upgrade pip
+pip_upgrade_cmd="$(which python) -m pip install --upgrade pip"
+$pip_upgrade_cmd
 echo "   ✅ pip 업그레이드 완료"
 
 # 의존성 설치
 echo ""
 echo "📦 프로젝트 의존성 설치 중..."
-pip install -r requirements.txt
+"$(which python)" -m pip install -r requirements.txt
 echo "   ✅ 의존성 설치 완료"
 
 # 환경변수 파일 생성
@@ -227,11 +232,11 @@ echo "=================================================="
 echo ""
 echo "📋 다음 단계:"
 echo "   1. .env 파일에서 OPENAI_API_KEY 설정"
-echo "   2. 로컬 서버 실행: ./scripts/start-local.sh"
+echo "   2. 로컬 서버 실행: ./scripts/02-envrinment/02-start-local.sh"
 echo "   3. API 문서 확인: http://127.0.0.1:8000/docs"
 echo ""
 echo "🔧 유용한 명령어:"
-echo "   • 서버 시작: ./scripts/start-local.sh"
+echo "   • 서버 시작: ./scripts/02-envrinment/02-start-local.sh"
 echo "   • 가상환경 활성화: source venv/bin/activate"
 echo "   • 의존성 설치: pip install -r requirements.txt"
 echo "   • DB 마이그레이션: alembic upgrade head"

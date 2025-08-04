@@ -46,14 +46,14 @@ OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 
 ```bash
 # 서버 시작 (자동으로 가상환경 활성화, DB 초기화, 서버 실행)
-./scripts/02-start-local.sh
+./scripts/02-envrinment/02-start-local.sh
 ```
 
 ### 4. API 테스트
 
 ```bash
 # 새 터미널에서 API 테스트 실행
-./scripts/03-test-api.sh
+./scripts/02-envrinment/03-test-api.sh
 ```
 
 ## 📖 API 문서

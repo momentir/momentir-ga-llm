@@ -8,7 +8,7 @@
 cd momentir-ga-llm
 
 # 서버 시작 (최초 실행 시 자동으로 환경 설정)
-./scripts/02-start-local.sh
+./scripts/02-envrinment/02-start-local.sh
 ```
 
 ### 2. 브라우저에서 API 문서 열기
@@ -204,7 +204,7 @@ alembic upgrade head
 curl http://127.0.0.1:8000/health
 
 # 서버 재시작
-./scripts/02-start-local.sh
+./scripts/02-envrinment/02-start-local.sh
 ```
 
 #### 2. "OpenAI API 오류"

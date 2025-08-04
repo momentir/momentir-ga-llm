@@ -10,7 +10,7 @@ echo "=================================================="
 
 # 현재 디렉토리 확인
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 echo "📁 프로젝트 디렉토리: $PROJECT_DIR"
 cd "$PROJECT_DIR"
