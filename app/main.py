@@ -62,6 +62,10 @@ async def root():
             "events_customer": "/api/events/customer/{customer_id}",
             "events_status": "/api/events/status",
             "events_statistics": "/api/events/statistics",
+            "events_generate_rule_based": "/api/events/generate-rule-based",
+            "events_update_priorities": "/api/events/update-priorities",
+            "events_priority": "/api/events/priority/{priority}",
+            "events_urgent_today": "/api/events/urgent-today",
             "docs": "/docs"
         }
     }

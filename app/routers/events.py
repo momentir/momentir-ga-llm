@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from app.database import get_db
 from app.services.event_parser import EventService
+from app.services.rule_based_events import RuleBasedEventGenerator, PriorityManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,10 @@ class EventProcessResponse(BaseModel):
     events: List[EventResponse]
 
 
-# 전역 이벤트 서비스 인스턴스
+# 전역 서비스 인스턴스
 event_service = EventService()
+rule_based_generator = RuleBasedEventGenerator()
+priority_manager = PriorityManager()
 
 
 @router.post("/process-memo", 
@@ -252,4 +255,207 @@ async def get_event_statistics(
         
     except Exception as e:
         logger.error(f"이벤트 통계 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-rule-based", 
+             summary="규칙 기반 이벤트 생성",
+             description="생일, 기념일, 보험 갱신, 정기 팔로업 등 규칙 기반 이벤트를 자동 생성합니다.")
+async def generate_rule_based_events(
+    target_days: int = 365,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    규칙 기반 이벤트를 자동 생성합니다.
+    
+    - **target_days**: 생성할 이벤트의 날짜 범위 (기본값: 365일)
+    
+    생성되는 이벤트 유형:
+    - 생일 이벤트: 30일 전, 7일 전, 1일 전
+    - 보험 갱신: 60일 전, 30일 전, 14일 전, 7일 전
+    - 정기 팔로업: 고객별 주기에 따라
+    - 계절별 안내: 봄, 여름, 가을, 겨울
+    """
+    try:
+        logger.info(f"규칙 기반 이벤트 생성 요청 (범위: {target_days}일)")
+        
+        result = await rule_based_generator.generate_all_rule_based_events(
+            db_session=db,
+            target_date_range=target_days
+        )
+        
+        return {
+            "success": True,
+            "message": f"규칙 기반 이벤트 {result['total_events_created']}개가 생성되었습니다.",
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"규칙 기반 이벤트 생성 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/update-priorities", 
+            summary="이벤트 우선순위 업데이트",
+            description="모든 이벤트의 우선순위를 동적으로 재계산합니다.")
+async def update_event_priorities(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    모든 이벤트의 우선순위를 동적으로 재계산합니다.
+    
+    고려 요소:
+    - 고객 중요도 (보험 상품 수, 최근 활동)
+    - 시간 긴급도 (이벤트까지 남은 시간)
+    - 이벤트 타입 (통화 > 일정 > 알림 > 메시지)
+    
+    우선순위:
+    - urgent: 즉시 처리 필요
+    - high: 높은 우선순위
+    - medium: 보통 우선순위  
+    - low: 낮은 우선순위
+    """
+    try:
+        logger.info("이벤트 우선순위 업데이트 요청")
+        
+        result = await priority_manager.update_event_priorities(db_session=db)
+        
+        return {
+            "success": True,
+            "message": f"{result['events_updated']}개 이벤트의 우선순위가 업데이트되었습니다.",
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"이벤트 우선순위 업데이트 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/priority/{priority}", 
+            summary="우선순위별 이벤트 조회",
+            description="특정 우선순위의 이벤트들을 조회합니다.")
+async def get_events_by_priority(
+    priority: str,
+    days: int = 30,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    특정 우선순위의 이벤트들을 조회합니다.
+    
+    - **priority**: 우선순위 (urgent, high, medium, low)
+    - **days**: 조회할 기간 (기본값: 30일)
+    """
+    try:
+        # 우선순위 유효성 검증
+        valid_priorities = ['urgent', 'high', 'medium', 'low']
+        if priority not in valid_priorities:
+            raise HTTPException(
+                status_code=400,
+                detail=f"유효하지 않은 우선순위입니다. 유효한 값: {valid_priorities}"
+            )
+        
+        from sqlalchemy import select, and_
+        from datetime import datetime, timedelta
+        from app.db_models import Event
+        
+        # 특정 우선순위의 이벤트 조회
+        end_date = datetime.now() + timedelta(days=days)
+        
+        stmt = select(Event).where(
+            and_(
+                Event.priority == priority,
+                Event.status == "pending",
+                Event.scheduled_date <= end_date
+            )
+        ).order_by(Event.scheduled_date.asc())
+        
+        result = await db.execute(stmt)
+        events = result.scalars().all()
+        
+        return {
+            "priority": priority,
+            "total_events": len(events),
+            "events": [
+                {
+                    "event_id": str(event.event_id),
+                    "event_type": event.event_type,
+                    "scheduled_date": event.scheduled_date.isoformat(),
+                    "priority": event.priority,
+                    "description": event.description,
+                    "status": event.status,
+                    "customer_id": str(event.customer_id) if event.customer_id else None
+                }
+                for event in events
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"우선순위별 이벤트 조회 중 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/urgent-today", 
+            summary="오늘의 긴급 이벤트",
+            description="오늘 처리해야 할 긴급 및 고우선순위 이벤트를 조회합니다.")
+async def get_urgent_events_today(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    오늘 처리해야 할 긴급 및 고우선순위 이벤트를 조회합니다.
+    """
+    try:
+        from sqlalchemy import select, and_, or_
+        from datetime import datetime, date, timedelta
+        from app.db_models import Event, Customer
+        
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        
+        # 오늘과 내일의 긴급/높은 우선순위 이벤트 조회
+        stmt = select(Event).join(Customer, Event.customer_id == Customer.customer_id, isouter=True).where(
+            and_(
+                Event.scheduled_date >= datetime.combine(today, datetime.min.time()),
+                Event.scheduled_date < datetime.combine(tomorrow, datetime.min.time()),
+                or_(Event.priority == "urgent", Event.priority == "high"),
+                Event.status == "pending"
+            )
+        ).order_by(Event.priority.desc(), Event.scheduled_date.asc())
+        
+        result = await db.execute(stmt)
+        events = result.scalars().all()
+        
+        # 고객 정보와 함께 반환
+        urgent_events = []
+        for event in events:
+            customer_name = "알 수 없음"
+            if event.customer_id:
+                customer_stmt = select(Customer).where(Customer.customer_id == event.customer_id)
+                customer_result = await db.execute(customer_stmt)
+                customer = customer_result.scalar_one_or_none()
+                if customer:
+                    customer_name = customer.name or "고객"
+            
+            urgent_events.append({
+                "event_id": str(event.event_id),
+                "event_type": event.event_type,
+                "scheduled_date": event.scheduled_date.isoformat(),
+                "priority": event.priority,
+                "description": event.description,
+                "status": event.status,
+                "customer_name": customer_name,
+                "customer_id": str(event.customer_id) if event.customer_id else None
+            })
+        
+        return {
+            "date": today.isoformat(),
+            "total_urgent_events": len(urgent_events),
+            "urgent_count": len([e for e in urgent_events if e["priority"] == "urgent"]),
+            "high_count": len([e for e in urgent_events if e["priority"] == "high"]),
+            "events": urgent_events
+        }
+        
+    except Exception as e:
+        logger.error(f"오늘의 긴급 이벤트 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
