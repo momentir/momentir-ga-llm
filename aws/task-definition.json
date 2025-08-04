@@ -21,6 +21,46 @@
         {
           "name": "LANGSMITH_PROJECT",
           "value": "insurance-memo-refiner"
+        },
+        {
+          "name": "OPENAI_API_TYPE",
+          "value": "azure"
+        },
+        {
+          "name": "AZURE_OPENAI_API_VERSION",
+          "value": "2024-02-01"
+        },
+        {
+          "name": "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME",
+          "value": "gpt-4o"
+        },
+        {
+          "name": "AZURE_EMBEDDING_API_VERSION",
+          "value": "2024-02-01"
+        },
+        {
+          "name": "AZURE_EMBEDDING_DEPLOYMENT_NAME",
+          "value": "text-embedding-3-small"
+        },
+        {
+          "name": "SQL_ECHO",
+          "value": "false"
+        },
+        {
+          "name": "AUTO_CREATE_TABLES",
+          "value": "false"
+        },
+        {
+          "name": "LANGSMITH_TRACING",
+          "value": "true"
+        },
+        {
+          "name": "LANGCHAIN_TRACING_V2",
+          "value": "true"
+        },
+        {
+          "name": "LANGCHAIN_ENDPOINT",
+          "value": "https://api.smith.langchain.com"
         }
       ],
       "secrets": [
@@ -35,6 +75,18 @@
         {
           "name": "LANGSMITH_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-api-key-INvQ0v"
+        },
+        {
+          "name": "AZURE_OPENAI_ENDPOINT",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/azure-openai-endpoint-xqkTJM"
+        },
+        {
+          "name": "AZURE_EMBEDDING_ENDPOINT",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/azure-embedding-endpoint-tsmpor"
+        },
+        {
+          "name": "AZURE_EMBEDDING_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/azure-embedding-api-key-tzIjee"
         }
       ],
       "logConfiguration": {
