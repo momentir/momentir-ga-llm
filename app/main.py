@@ -3,10 +3,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.routers import memo, customer, events
 from app.database import db_manager
+from app.utils.langsmith_config import langsmith_manager
 from dotenv import load_dotenv
 import os
+import logging
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# LangSmith 상태 로깅
+logger.info(f"🔍 LangSmith 상태: enabled={langsmith_manager.enabled}, project={langsmith_manager.project_name}")
+logger.info(f"🔍 환경변수 - LANGSMITH_API_KEY: {'설정됨' if os.getenv('LANGSMITH_API_KEY') else '설정안됨'}")
+logger.info(f"🔍 환경변수 - LANGSMITH_TRACING: {os.getenv('LANGSMITH_TRACING')}")
+logger.info(f"🔍 환경변수 - LANGSMITH_PROJECT: {os.getenv('LANGSMITH_PROJECT')}")
+logger.info(f"🔍 환경변수 - LANGCHAIN_TRACING_V2: {os.getenv('LANGCHAIN_TRACING_V2')}")
+logger.info(f"🔍 환경변수 - LANGCHAIN_ENDPOINT: {os.getenv('LANGCHAIN_ENDPOINT')}")
 
 
 @asynccontextmanager

@@ -20,7 +20,7 @@
       "environment": [
         {
           "name": "LANGSMITH_PROJECT",
-          "value": "insurance-memo-refiner"
+          "value": "default"
         },
         {
           "name": "OPENAI_API_TYPE",
