@@ -26,15 +26,15 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/database-url"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/database-url-sHxzYg"
         },
         {
           "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/openai-api-key"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/openai-api-key-wGG3Oi"
         },
         {
           "name": "LANGSMITH_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-api-key"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-api-key-INvQ0v"
         }
       ],
       "logConfiguration": {
@@ -46,7 +46,7 @@
         }
       },
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
