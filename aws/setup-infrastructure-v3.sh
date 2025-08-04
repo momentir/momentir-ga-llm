@@ -7,7 +7,7 @@ set -e
 
 REGION=${1:-ap-northeast-2}
 ACCOUNT_ID=${2}
-PROJECT_NAME="momentir-ga-llm"
+PROJECT_NAME="momentir-cx-llm"
 
 if [ -z "$ACCOUNT_ID" ]; then
     echo "사용법: $0 AWS_REGION AWS_ACCOUNT_ID"

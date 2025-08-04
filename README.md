@@ -24,7 +24,7 @@
 ```bash
 # 프로젝트 클론
 git clone <repository-url>
-cd momentir-ga-llm
+cd momentir-cx-llm
 
 # 개발 환경 자동 설정
 ./scripts/01-setup-development.sh
@@ -137,7 +137,7 @@ pytest --cov=app tests/
 ## 📁 프로젝트 구조
 
 ```
-momentir-ga-llm/
+momentir-cx-llm/
 ├── app/                      # 메인 애플리케이션
 │   ├── main.py              # FastAPI 앱 진입점
 │   ├── database.py          # 데이터베이스 연결

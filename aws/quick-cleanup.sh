@@ -6,7 +6,7 @@
 set -e
 
 REGION=${1:-ap-northeast-2}
-PROJECT_NAME="momentir-ga-llm"
+PROJECT_NAME="momentir-cx-llm"
 
 echo "🚀 빠른 삭제 시작... (확인 없이 진행)"
 echo "Region: $REGION"

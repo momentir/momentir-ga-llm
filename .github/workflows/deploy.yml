@@ -8,11 +8,11 @@ on:
 
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: momentir-ga-llm
-  ECS_SERVICE: momentir-ga-llm-service
-  ECS_CLUSTER: momentir-ga-llm-cluster
+  ECR_REPOSITORY: momentir-cx-llm
+  ECS_SERVICE: momentir-cx-llm-service
+  ECS_CLUSTER: momentir-cx-llm-cluster
   ECS_TASK_DEFINITION: aws/task-definition.json
-  CONTAINER_NAME: momentir-ga-llm
+  CONTAINER_NAME: momentir-cx-llm
 
 permissions:
   contents: read

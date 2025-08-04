@@ -14,7 +14,7 @@ LangSmith가 통합되어 모든 LLM 호출을 추적할 수 있게 되었습니
 ```bash
 # LangSmith 설정 (LLM 호출 추적)
 LANGSMITH_API_KEY=your-actual-langsmith-api-key-here
-LANGSMITH_PROJECT=momentir-ga-llm
+LANGSMITH_PROJECT=momentir-cx-llm
 LANGSMITH_TRACING=true
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
@@ -48,7 +48,7 @@ pip install -r requirements.txt
 ```
 
 서버 시작 시 다음과 같은 LangSmith 관련 로그를 확인할 수 있습니다:
-- `✅ LangSmith 추적이 활성화되었습니다. 프로젝트: momentir-ga-llm`
+- `✅ LangSmith 추적이 활성화되었습니다. 프로젝트: momentir-cx-llm`
 - `ℹ️ LangSmith 추적이 비활성화되어 있습니다.` (API 키가 없는 경우)
 
 ### 2. API 테스트 스크립트 실행
@@ -104,7 +104,7 @@ curl -X POST "http://127.0.0.1:8000/api/memo/analyze" \
 
 ### 2. 대시보드 접속
 1. https://smith.langchain.com 접속
-2. 설정한 프로젝트 (`momentir-ga-llm`) 선택
+2. 설정한 프로젝트 (`momentir-cx-llm`) 선택
 3. `Traces` 탭에서 실시간 LLM 호출 추적 확인
 
 ### 3. 추적 정보 예시

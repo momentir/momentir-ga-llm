@@ -5,7 +5,7 @@
 ### 1. 시스템 실행
 ```bash
 # 프로젝트 디렉토리로 이동
-cd momentir-ga-llm
+cd momentir-cx-llm
 
 # 서버 시작 (최초 실행 시 자동으로 환경 설정)
 ./scripts/02-envrinment/02-start-local.sh

@@ -15,7 +15,7 @@ class LangSmithManager:
         self.enabled = False
         self.client: Optional[Client] = None
         self.tracer: Optional[LangChainTracer] = None
-        self.project_name = os.getenv("LANGSMITH_PROJECT", "momentir-ga-llm")
+        self.project_name = os.getenv("LANGSMITH_PROJECT", "momentir-cx-llm")
         self.llm_client = None
         
         self._initialize()

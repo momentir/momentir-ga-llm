@@ -13,9 +13,9 @@ echo "Region: $REGION"
 echo "Project: $PROJECT_NAME"
 echo "=========================================="
 
-# 1. ECR 리포지토리 확인 (기존 momentir-ga-llm도 확인)
+# 1. ECR 리포지토리 확인 (기존 momentir-cx-llm도 확인)
 echo "📦 ECR 리포지토리 상태:"
-OLD_PROJECT_NAME="momentir-ga-llm"
+OLD_PROJECT_NAME="momentir-cx-llm"
 
 if aws ecr describe-repositories --repository-names $PROJECT_NAME --region $REGION --no-cli-pager &>/dev/null; then
     aws ecr describe-repositories \
@@ -115,22 +115,6 @@ aws rds describe-db-instances \
     --region $REGION 2>/dev/null || echo "❌ RDS 인스턴스가 존재하지 않습니다."
 
 echo ""
-
-# 9. Secrets Manager 확인
-echo "🔐 Secrets Manager 상태:"
-echo "Database URL:"
-aws secretsmanager describe-secret \
-    --secret-id "$PROJECT_NAME/database-url" \
-    --query '{Name:Name,CreatedDate:CreatedDate}' \
-    --output table \
-    --region $REGION 2>/dev/null || echo "❌ database-url 시크릿이 존재하지 않습니다."
-
-echo "OpenAI API Key:"
-aws secretsmanager describe-secret \
-    --secret-id "$PROJECT_NAME/openai-api-key" \
-    --query '{Name:Name,CreatedDate:CreatedDate}' \
-    --output table \
-    --region $REGION 2>/dev/null || echo "❌ openai-api-key 시크릿이 존재하지 않습니다."
 
 echo ""
 echo "=========================================="

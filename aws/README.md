@@ -77,7 +77,7 @@ sudo yum install postgresql
 
 | 리소스 | 이름 | 설명 |
 |--------|------|------|
-| ECR Repository | `momentir-ga-llm` | Docker 이미지 저장소 |
+| ECR Repository | `momentir-cx-llm` | Docker 이미지 저장소 |
 | ECS Cluster | `momentir-cx-llm-cluster` | 컨테이너 오케스트레이션 |
 | RDS Instance | `momentir-cx-llm-db` | PostgreSQL 17.5 데이터베이스 |
 | Security Group | `momentir-cx-llm-sg` | 네트워크 보안 규칙 |

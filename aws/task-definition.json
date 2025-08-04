@@ -1,5 +1,5 @@
 {
-  "family": "momentir-ga-llm",
+  "family": "momentir-cx-llm",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
@@ -8,8 +8,8 @@
   "taskRoleArn": "arn:aws:iam::940482450816:role/ecsTaskRole",
   "containerDefinitions": [
     {
-      "name": "momentir-ga-llm",
-      "image": "940482450816.dkr.ecr.ap-northeast-2.amazonaws.com/momentir-ga-llm:latest",
+      "name": "momentir-cx-llm",
+      "image": "940482450816.dkr.ecr.ap-northeast-2.amazonaws.com/momentir-cx-llm:latest",
       "portMappings": [
         {
           "containerPort": 8000,
@@ -26,21 +26,21 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/database-url"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/database-url"
         },
         {
           "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/openai-api-key"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/openai-api-key"
         },
         {
           "name": "LANGSMITH_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-ga-llm/langsmith-api-key"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-api-key"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/momentir-ga-llm",
+          "awslogs-group": "/ecs/momentir-cx-llm",
           "awslogs-region": "ap-northeast-2",
           "awslogs-stream-prefix": "ecs"
         }
