@@ -2,7 +2,7 @@
 
 # AWS 인프라 설정 스크립트 v5 (프로젝트명 통일 + --no-cli-pager 추가)
 # aws sts get-caller-identity
-# 사용법: ./01-aws/01-setup-infrastructure.sh ap-northeast-2 YOUR_AWS_ACCOUNT_ID
+# 사용법: ./scripts/01-aws/01-setup-infrastructure.sh ap-northeast-2 940482450816
 
 set -e
 
@@ -157,6 +157,29 @@ else
         --default-actions Type=forward,TargetGroupArn="$TARGET_GROUP_ARN" \
         --region "$REGION" &&
     echo "✅ 리스너 생성"
+fi
+
+
+# 9. ECS 서비스 생성 🚀
+check_step "ECS 서비스 생성" "🚀"
+if aws --no-cli-pager ecs describe-services \
+       --cluster "$PROJECT_NAME-cluster" \
+       --services "$PROJECT_NAME-service" \
+       --region "$REGION" \
+       --query 'services[?serviceName==`'"$PROJECT_NAME-service"'`]' \
+       --output text | grep -q "$PROJECT_NAME-service"; then
+    echo "ℹ️  ECS 서비스가 이미 존재합니다: $PROJECT_NAME-service"
+else
+    aws --no-cli-pager ecs create-service \
+        --cluster "$PROJECT_NAME-cluster" \
+        --service-name "$PROJECT_NAME-service" \
+        --task-definition "$PROJECT_NAME" \
+        --desired-count 1 \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[${SUBNET_ARRAY[0]},${SUBNET_ARRAY[1]}],securityGroups=[$SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+        --region "$REGION" \
+    && echo "✅ ECS 서비스 생성 완료: $PROJECT_NAME-service" \
+    || { echo "❌ ECS 서비스 생성 실패"; exit 1; }
 fi
 
 # 9. RDS 서브넷 그룹 생성
