@@ -177,7 +177,6 @@ class MemoRefinerService:
         
         self.parser = MemoRefinementParser()
     
-    @trace_llm_call("메모 정제", {"function": "refine_memo"})
     async def refine_memo(self, memo: str) -> Dict[str, Any]:
         """
         OpenAI를 사용하여 메모를 정제하는 메인 메서드
@@ -266,7 +265,6 @@ class MemoRefinerService:
         
         return validated
     
-    @trace_llm_call("임베딩 생성", {"function": "create_embedding"})
     async def create_embedding(self, text: str) -> Optional[List[float]]:
         """
         텍스트에 대한 임베딩 벡터를 생성합니다.
@@ -683,7 +681,6 @@ class MemoRefinerService:
         
         return today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
     
-    @trace_llm_call("향상된 조건부 분석", {"function": "perform_enhanced_conditional_analysis"})
     async def perform_enhanced_conditional_analysis(self, 
                                                   refined_memo: Dict[str, Any], 
                                                   conditions: Dict[str, Any],

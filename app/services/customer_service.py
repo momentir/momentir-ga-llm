@@ -191,7 +191,6 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
-    @trace_llm_call("엑셀 컬럼 매핑", {"function": "map_excel_columns"})
     async def map_excel_columns(self, excel_columns: List[str]) -> Dict[str, Any]:
         """
         LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다.
