@@ -133,14 +133,20 @@ class MemoRefinerService:
         
         # 시스템 프롬프트 정의
         self.system_prompt = """당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
-다음 고객 메모에서 중요한 정보를 추출해주세요:
+고객 메모에서 다음 정보를 정확하게 추출해주세요:
+
+**중요: 시간 관련 표현을 놓치지 말고 모두 찾아주세요!**
 
 다음 정보를 추출하세요:
 1. 고객 상태/감정
-2. 주요 키워드 (관심사, 니즈)
-3. 시간 관련 표현 (예: "2주 후", "다음 달", "내일", "곧")
+2. 주요 키워드 (관심사, 니즈, 고객명, 보험상품명 등)
+3. **시간 관련 표현** - 다음과 같은 모든 시간 표현을 찾아주세요:
+   - 상대적 시간: "내일", "모레", "2주 후", "1주일 뒤", "다음 주", "다음 달"
+   - 구체적 요일: "다음 주 화요일", "이번 주 금요일"
+   - 구체적 날짜: "12월 25일", "2024년 3월 15일"
+   - 시간: "오후 2시", "아침 9시"
 4. 필요한 후속 조치
-5. 보험 관련 정보 (상품명, 보험료, 관심 상품)
+5. 보험 관련 정보
 
 출력은 반드시 다음 JSON 형식으로 제공하세요:
 {
@@ -148,8 +154,8 @@ class MemoRefinerService:
   "status": "고객의 현재 상태/감정",
   "keywords": ["키워드1", "키워드2", "키워드3"],
   "time_expressions": [{
-    "expression": "원본 시간 표현",
-    "parsed_date": "YYYY-MM-DD 형식 (파싱 가능한 경우)"
+    "expression": "원본 시간 표현 (예: 다음 주 화요일)",
+    "parsed_date": null
   }],
   "required_actions": ["조치1", "조치2"],
   "insurance_info": {
@@ -160,11 +166,12 @@ class MemoRefinerService:
   }
 }
 
-시간 표현 파싱 규칙:
-- "2주 후" → 현재 날짜 + 14일
-- "다음 달" → 다음 달 1일
-- "내일" → 현재 날짜 + 1일
-- 구체적 날짜는 그대로 활용
+**주의사항:**
+- time_expressions 배열에는 메모에서 발견되는 모든 시간 표현을 포함해야 합니다
+- parsed_date는 null로 두세요 (별도 파서에서 처리)
+- 시간 표현이 없으면 빈 배열 []로 설정
+- 고객명, 보험상품명은 keywords에 포함
+- required_actions는 구체적이고 실행 가능한 조치들로 작성
 
 보험업계 전문용어와 고객 서비스 관점에서 정확하게 분석하세요."""
         
@@ -407,7 +414,8 @@ class MemoRefinerService:
     
     async def refine_and_save_memo(self, 
                                   memo: str, 
-                                  db_session: AsyncSession) -> Dict[str, Any]:
+                                  db_session: AsyncSession,
+                                  auto_generate_events: bool = True) -> Dict[str, Any]:
         """
         메모를 정제하고 데이터베이스에 저장하는 통합 메서드
         """
@@ -421,10 +429,17 @@ class MemoRefinerService:
             # 3. 유사한 메모 검색 (선택적)
             similar_memos = await self.find_similar_memos(memo, db_session, limit=3)
             
+            # 4. 이벤트 자동 생성 (옵션) - 별도 트랜잭션으로 처리
+            events_created = []
+            if auto_generate_events:
+                logger.info(f"메모 {memo_record.id}에 대한 이벤트 자동 생성은 별도 API 호출로 처리하세요: POST /api/events/process-memo")
+            
             return {
                 "memo_id": str(memo_record.id),
                 "refined_data": refined_data,
                 "similar_memos_count": len(similar_memos),
+                "events_created": len(events_created),
+                "events": events_created,
                 "created_at": memo_record.created_at.isoformat()
             }
             

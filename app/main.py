@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.routers import memo, customer
+from app.routers import memo, customer, events
 from app.database import db_manager
 from dotenv import load_dotenv
 import os
@@ -39,6 +39,7 @@ app.add_middleware(
 
 app.include_router(memo.router)
 app.include_router(customer.router)
+app.include_router(events.router)
 
 
 @app.get("/")
@@ -56,6 +57,11 @@ async def root():
             "customer_excel_upload": "/api/customer/excel-upload",
             "customer_column_mapping": "/api/customer/column-mapping",
             "customer_analytics": "/api/customer/{customer_id}/analytics",
+            "events_process_memo": "/api/events/process-memo",
+            "events_upcoming": "/api/events/upcoming",
+            "events_customer": "/api/events/customer/{customer_id}",
+            "events_status": "/api/events/status",
+            "events_statistics": "/api/events/statistics",
             "docs": "/docs"
         }
     }

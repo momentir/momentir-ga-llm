@@ -58,7 +58,7 @@ class Event(Base):
     __tablename__ = "events"
     
     event_id = Column(UUID(), primary_key=True, default=uuid.uuid4, comment="이벤트 ID")
-    customer_id = Column(UUID(), ForeignKey("customers.customer_id"), nullable=False, comment="고객 ID")
+    customer_id = Column(UUID(), ForeignKey("customers.customer_id"), nullable=True, comment="고객 ID")
     memo_id = Column(UUID(), ForeignKey("customer_memos.id"), nullable=True, comment="관련 메모 ID")
     event_type = Column(String(50), nullable=False, comment="이벤트 타입: call, message, reminder, calendar")
     scheduled_date = Column(DateTime, nullable=True, comment="예정 날짜")
