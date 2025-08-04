@@ -123,22 +123,36 @@ done
 check_step "ECS 클러스터 생성" "🏗️"
 
 # ECS 클러스터가 존재하는지 확인
-if aws ecs describe-clusters --clusters "$PROJECT_NAME-cluster" --region "$REGION" &>/dev/null; then
-    CLUSTER_STATUS=$(aws ecs describe-clusters --clusters "$PROJECT_NAME-cluster" --region "$REGION" --query 'clusters[0].status' --output text)
-    echo "ℹ️  ECS 클러스터가 이미 존재합니다: $PROJECT_NAME-cluster (상태: $CLUSTER_STATUS)"
+# TODO: ECS 클러스터 존재 여부 체크 필요
+# (base) chris@Mac momentir-ga-llm % aws ecs list-clusters --region ap-northeast-2 { "clusterArns": [] }
+CLUSTER_NAME="$PROJECT_NAME-cluster"
+
+# 존재 여부 확인 (clusters 배열 길이를 가져옴)
+CLUSTER_COUNT=$(aws --no-cli-pager ecs describe-clusters \
+    --clusters "$CLUSTER_NAME" \
+    --region "$REGION" \
+    --query 'length(clusters)' \
+    --output text)
+
+if [ "$CLUSTER_COUNT" -gt 0 ]; then
+    # 이미 있으면 상태만 조회
+    CLUSTER_STATUS=$(aws --no-cli-pager ecs describe-clusters \
+        --clusters "$CLUSTER_NAME" \
+        --region "$REGION" \
+        --query 'clusters[0].status' \
+        --output text)
+    echo "ℹ️  ECS 클러스터가 이미 존재합니다: $CLUSTER_NAME (상태: $CLUSTER_STATUS)"
 else
     echo "ECS 클러스터 생성 중..."
-    if aws ecs create-cluster \
-        --cluster-name "$PROJECT_NAME-cluster" \
+    aws --no-cli-pager ecs create-cluster \
+        --cluster-name "$CLUSTER_NAME" \
         --capacity-providers FARGATE \
         --default-capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
-        --region "$REGION"; then
-        echo "✅ ECS 클러스터 생성 완룼: $PROJECT_NAME-cluster"
-    else
-        echo "❌ ECS 클러스터 생성 실패"
-        exit 1
-    fi
+        --region "$REGION" \
+    && echo "✅ ECS 클러스터 생성 완료: $CLUSTER_NAME" \
+    || { echo "❌ ECS 클러스터 생성 실패"; exit 1; }
 fi
+
 
 # 5. CloudWatch 로그 그룹 생성
 check_step "CloudWatch 로그 그룹 생성" "📝"
