@@ -8,10 +8,13 @@ from sqlalchemy import select, and_, or_
 from app.db_models import Customer
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
+from app.utils.dynamic_prompt_loader import get_column_mapping_prompt, prompt_loader
+from app.models.prompt_models import PromptCategory
 from datetime import datetime, date
 import json
 import re
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -45,39 +48,8 @@ class CustomerService:
             "insurance_products": "보험 상품 정보"
         }
         
-        # 컬럼 매핑을 위한 시스템 프롬프트
-        self.mapping_prompt = f"""당신은 엑셀 컬럼명을 표준 고객 스키마로 매핑하는 전문가입니다.
-
-표준 스키마:
-{json.dumps(self.standard_schema, ensure_ascii=False, indent=2)}
-
-다음 규칙을 따라 매핑하세요:
-1. 엑셀 컬럼명과 의미가 가장 유사한 표준 필드로 매핑
-2. 확신이 없거나 매핑할 수 없는 컬럼은 'unmapped'로 표시
-3. 한국어와 영어 모두 고려
-4. 동의어와 약어도 고려 (예: 성함, 이름, name → name)
-
-출력 형식:
-{{
-    "mapping": {{
-        "엑셀컬럼명": "표준필드명 또는 unmapped"
-    }},
-    "confidence_score": 0.0 ~ 1.0
-}}
-
-예시:
-엑셀 컬럼: ["성함", "전화번호", "직장", "성별", "생일"]
-출력:
-{{
-    "mapping": {{
-        "성함": "name",
-        "전화번호": "contact", 
-        "직장": "affiliation",
-        "성별": "gender",
-        "생일": "date_of_birth"
-    }},
-    "confidence_score": 0.95
-}}"""
+        # 동적 프롬프트 로딩을 위한 설정
+        self.use_dynamic_prompts = True
 
     async def create_customer(self, customer_data: CustomerCreateRequest, db_session: AsyncSession) -> Customer:
         """
@@ -191,25 +163,50 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
-    async def map_excel_columns(self, excel_columns: List[str]) -> Dict[str, Any]:
+    async def map_excel_columns(self, excel_columns: List[str], user_session: str = None, db_session: AsyncSession = None) -> Dict[str, Any]:
         """
-        LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다.
+        LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다. (동적 프롬프트 지원)
         """
         try:
             logger.info(f"엑셀 컬럼 매핑 시작: {excel_columns}")
+            start_time = time.time()
             
-            # 프롬프트 구성
-            user_prompt = f"""엑셀 컬럼명들을 표준 스키마로 매핑해주세요:
+            # 동적 프롬프트 로딩
+            if self.use_dynamic_prompts:
+                user_prompt = await get_column_mapping_prompt(
+                    excel_columns, 
+                    self.standard_schema, 
+                    user_session, 
+                    db_session
+                )
+            else:
+                # 폴백 프롬프트 (하드코딩)
+                user_prompt = f"""당신은 엑셀 컬럼명을 표준 고객 스키마로 매핑하는 전문가입니다.
+
+표준 스키마:
+{json.dumps(self.standard_schema, ensure_ascii=False, indent=2)}
+
+엑셀 컬럼명들을 표준 스키마로 매핑해주세요:
 
 엑셀 컬럼: {excel_columns}
 
-각 컬럼을 가장 적절한 표준 필드로 매핑하거나 'unmapped'로 표시하세요."""
+각 엑셀 컬럼이 어떤 표준 필드에 해당하는지 매핑하고,
+매핑할 수 없는 컬럼은 'unmapped'로 표시하세요.
+
+JSON 형식으로 응답해주세요:
+{{
+  "mappings": {{
+    "엑셀컬럼명": "표준필드명",
+    "매핑불가컬럼": "unmapped"
+  }},
+  "confidence": 0.95,
+  "suggestions": ["매핑 개선 제안"]
+}}"""
 
             # OpenAI API 호출
             response = await self.client.chat.completions.create(
                 model=self.chat_model,
                 messages=[
-                    {"role": "system", "content": self.mapping_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
@@ -232,27 +229,50 @@ class CustomerService:
                     if mapped_field == "unmapped"
                 ]
                 
+                end_time = time.time()
+                response_time_ms = int((end_time - start_time) * 1000)
+                
                 # LangSmith에 수동 로깅
                 langsmith_manager.log_llm_call(
                     model=self.chat_model,
-                    prompt=f"시스템: {self.mapping_prompt[:100]}...\n사용자: {user_prompt}",
+                    prompt=f"컬럼 매핑: {json.dumps(excel_columns, ensure_ascii=False)}",
                     response=result_text,
                     metadata={
                         "function": "map_excel_columns",
                         "input_columns": excel_columns,
                         "mapped_count": len([v for v in mapping.values() if v != "unmapped"]),
                         "unmapped_count": len(unmapped_columns),
-                        "confidence_score": confidence_score
+                        "confidence_score": confidence_score,
+                        "response_time_ms": response_time_ms,
+                        "use_dynamic_prompts": self.use_dynamic_prompts
                     }
                 )
                 
                 logger.info(f"엑셀 컬럼 매핑 완료: 신뢰도 {confidence_score}")
                 
-                return {
+                final_result = {
                     "mapping": mapping,
                     "unmapped_columns": unmapped_columns,
                     "confidence_score": min(max(confidence_score, 0.0), 1.0)
                 }
+                
+                # A/B 테스트 결과 기록 (동적 프롬프트 사용 시)
+                if self.use_dynamic_prompts and user_session:
+                    try:
+                        await prompt_loader.record_usage_result(
+                            category=PromptCategory.COLUMN_MAPPING,
+                            user_session=user_session,
+                            input_data={"excel_columns": excel_columns, "standard_schema": self.standard_schema},
+                            output_data=final_result,
+                            response_time_ms=response_time_ms,
+                            success=True,
+                            quality_score=confidence_score,
+                            db=db_session
+                        )
+                    except Exception as e:
+                        logger.warning(f"A/B 테스트 결과 기록 실패: {e}")
+                
+                return final_result
 
             except json.JSONDecodeError:
                 # JSON 파싱 실패 시 기본 매핑 반환

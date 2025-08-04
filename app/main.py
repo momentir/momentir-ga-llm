@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.routers import memo, customer, events
+from app.routers import memo, customer, events, prompts
 from app.database import db_manager
 from app.utils.langsmith_config import langsmith_manager
 from dotenv import load_dotenv
@@ -54,6 +54,7 @@ app.add_middleware(
 app.include_router(memo.router)
 app.include_router(customer.router)
 app.include_router(events.router)
+app.include_router(prompts.router)
 
 
 @app.get("/")
@@ -80,6 +81,9 @@ async def root():
             "events_update_priorities": "/api/events/update-priorities",
             "events_priority": "/api/events/priority/{priority}",
             "events_urgent_today": "/api/events/urgent-today",
+            "prompts_templates": "/api/prompts/templates",
+            "prompts_render": "/api/prompts/render",
+            "prompts_ab_tests": "/api/prompts/ab-tests",
             "docs": "/docs"
         }
     }

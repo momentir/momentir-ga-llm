@@ -19,76 +19,109 @@
 
 ## Phase별 개발 계획
 
-### Phase 1: 기본 메모 정제 API 구현
+### Phase 1: 기본 메모 정제 API 구현 ✅ (완료)
 **목표**: 단일 메모를 입력받아 정제하는 핵심 기능 구현
 
-#### Step 1: FastAPI 기본 구조 설정
+#### Step 1: FastAPI 기본 구조 설정 ✅ (완료)
 ```bash
 # Claude Code 명령
 "FastAPI로 기본 메모 정제 API를 만들어줘. /api/memo/refine 엔드포인트와 /api/memo/quick-save 엔드포인트를 구현해줘"
 ```
 
-#### Step 2: LangChain 통합
+#### Step 2: LangChain 통합 ✅ (완료)
 ```bash
 # Claude Code 명령
 "LangChain을 사용해서 메모 정제 체인을 구현해줘. GPT-4 모델 사용하고 고객 정보 추출 프롬프트를 만들어줘"
 ```
 
-#### Step 3: 기본 DB 연결 및 저장
+#### Step 3: 기본 DB 연결 및 저장 ✅ (완료)
 ```bash
 # Claude Code 명령
 "PostgreSQL 연결 설정하고 원본 메모와 정제된 메모를 분리하여 저장하는 기능을 구현해줘"
 ```
 
-### Phase 2: 고객 데이터 통합 및 조건부 분석
+### Phase 2: 고객 데이터 통합 및 조건부 분석 ✅ (완료)
 **목표**: 엑셀 업로드, LLM 기반 데이터 매핑, 조건부 분석 구현
 
-#### Step 4: 엑셀 업로드 및 LLM 매핑
+#### Step 4: 엑셀 업로드 및 LLM 매핑 ✅ (완료)
 ```bash
 # Claude Code 명령
 "엑셀 파일 업로드 API를 만들고, LLM을 사용해 다양한 컬럼명을 표준 스키마로 매핑하는 기능을 구현해줘"
 ```
 
-#### Step 5: 고객 스키마 구현
+#### Step 5: 고객 스키마 구현 ✅ (완료)
 ```bash
 # Claude Code 명령
 "planner_input.json 스키마를 참고해서 고객 데이터 모델을 구현하고 CRUD API를 만들어줘"
 ```
 
-#### Step 6: 조건부 분석 체인
+#### Step 6: 조건부 분석 체인 ✅ (완료)
 ```bash
 # Claude Code 명령
 "고객 타입, 보험 가입 현황 등 조건에 따른 메모 분석 체인을 구현해줘. /api/memo/analyze 엔드포인트 추가"
 ```
 
-### Phase 3: 이벤트 시스템 및 고도화
+### Phase 3: 이벤트 시스템 및 고도화 ✅ (완료)
 **목표**: 메모 기반 이벤트 트리거, 알림 시스템, LangSmith 모니터링
 
-#### Step 7: 이벤트 트리거 시스템
+#### Step 7: 이벤트 트리거 시스템 ✅ (완료)
 ```bash
 # Claude Code 명령
 "메모 분석 결과에서 시간 표현을 파싱하고 이벤트(전화하기, 메시지보내기, 알림)를 생성하는 시스템을 구현해줘"
 ```
 
-#### Step 8: 규칙 기반 이벤트 추가
+#### Step 8: 규칙 기반 이벤트 추가 ✅ (완료)
 ```bash
 # Claude Code 명령
 "생일, 기념일 등 규칙 기반 이벤트 트리거를 추가하고 우선순위 시스템을 구현해줘"
 ```
 
-#### Step 9: LangSmith 통합
+#### Step 9: LangSmith 통합 ✅ (완료)
 ```bash
 # Claude Code 명령
 "LangSmith를 설정하고 모든 LLM 호출을 추적하도록 통합해줘"
 ```
 
-### Phase 4: AWS 인프라 구축
-**목표**: 서버리스 아키텍처로 프로덕션 환경 구성
+### Phase 4: 프롬프트 관리 시스템 구축 ✅ (완료)
+**목표**: 프롬프트 버전 관리, A/B 테스트, 동적 로딩
 
-#### Step 10: AWS 인프라 스크립트 작성
+#### Step 10: 프롬프트 관리 시스템 설계 ✅ (완료)
 ```bash
 # Claude Code 명령
-"AWS CLI를 사용해서 단계별 인프라 구축 스크립트를 작성해줘. 각 단계마다 생성 확인과 에러 처리를 포함하고, 프리티어 옵션만 사용해줘"
+"프롬프트를 파일이나 DB에서 관리하고 동적으로 로드하는 시스템을 설계해줘. 버전 관리와 A/B 테스트가 가능하도록 구현해줘"
+```
+
+#### Step 11: 프롬프트 테스트 인터페이스 ✅ (완료)
+```bash
+# Claude Code 명령
+"프롬프트를 수정하고 실시간으로 테스트할 수 있는 API 엔드포인트를 만들어줘. Swagger 화면에서 테스트할 계획이니깐 여기서 확인하기 용이하게 Swagger 관련 설명을 추가해줘."
+```
+
+#### Step 12: 프롬프트 성능 평가 시스템 ✅ (완료)
+```bash
+# Claude Code 명령
+"프롬프트 변경에 따른 출력 품질을 평가하고 비교할 수 있는 시스템을 구현해줘. LangSmith와 연동해서 추적해줘"
+```
+
+### Phase 5: 벡터 DB 최적화 및 이벤트 고도화
+**목표**: pgvector 활용, 이벤트 파이프라인 개선
+
+#### Step 13: pgvector 전환
+```bash
+# Claude Code 명령
+"현재 JSONB로 저장된 임베딩을 pgvector의 vector 타입으로 전환하고, 효율적인 유사도 검색을 구현해줘"
+```
+
+#### Step 14: 이벤트 파이프라인 분리
+```bash
+# Claude Code 명령
+"메모 저장과 이벤트 생성을 분리된 프로세스로 구현해줘. 큐 시스템이나 비동기 처리를 사용해서 확장 가능하게 만들어줘"
+```
+
+#### Step 15: 이벤트 워크플로우 엔진
+```bash
+# Claude Code 명령
+"LangGraph를 활용해서 복잡한 이벤트 워크플로우를 관리하는 시스템을 구현해줘. 조건부 분기와 상태 관리를 포함해줘"
 ```
 
 ## AWS 인프라 구축 지침
@@ -176,50 +209,70 @@ GET /api/events/upcoming
 }
 ```
 
+## 데이터 플로우 및 아키텍처
+
+### 메모 처리 프로세스
+1. **메모 입력** → `/api/memo/quick-save` (원본 저장)
+2. **LLM 정제** → `/api/memo/refine` (프롬프트 기반 정제)
+3. **데이터 저장**:
+   - PostgreSQL 일반 테이블: 원본 메모, 정제된 JSON 데이터
+   - 임베딩 벡터: JSONB 형태로 저장 (추후 pgvector로 전환 예정)
+4. **이벤트 생성** → `/api/events/process-memo` (별도 API 호출)
+5. **이벤트 실행** → 우선순위 기반 스케줄링
+
+### 프롬프트 관리 현황 ✅ (완료)
+- **현재**: 동적 프롬프트 관리 시스템 완료
+  - ✅ DB 기반 저장 (PostgreSQL)
+  - ✅ 버전 관리 시스템
+  - ✅ A/B 테스트 프레임워크
+  - ✅ 실시간 수정 및 테스트 API
+  - ✅ Jinja2 템플릿 엔진 통합
+  - ✅ 기존 서비스와 동적 연동
+
 ## 데이터베이스 스키마
 
 ### customers 테이블
 ```sql
 CREATE TABLE customers (
-    customer_id UUID PRIMARY KEY,
-    name VARCHAR(100),
-    contact VARCHAR(50),
-    affiliation VARCHAR(200),
-    occupation VARCHAR(100),
-    gender VARCHAR(10),
-    date_of_birth DATE,
-    interests JSONB,
-    life_events JSONB,
-    insurance_products JSONB,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
+                          customer_id UUID PRIMARY KEY,
+                          name VARCHAR(100),
+                          contact VARCHAR(50),
+                          affiliation VARCHAR(200),
+                          occupation VARCHAR(100),
+                          gender VARCHAR(10),
+                          date_of_birth DATE,
+                          interests JSONB,
+                          life_events JSONB,
+                          insurance_products JSONB,
+                          created_at TIMESTAMP,
+                          updated_at TIMESTAMP
 );
 ```
 
 ### memos 테이블
 ```sql
 CREATE TABLE memos (
-    memo_id UUID PRIMARY KEY,
-    customer_id UUID REFERENCES customers(customer_id),
-    original_content TEXT,
-    refined_content JSONB,
-    status VARCHAR(20), -- 'draft', 'refined', 'confirmed'
-    created_at TIMESTAMP,
-    author VARCHAR(100)
+                      memo_id UUID PRIMARY KEY,
+                      customer_id UUID REFERENCES customers(customer_id),
+                      original_content TEXT,
+                      refined_content JSONB,
+                      status VARCHAR(20), -- 'draft', 'refined', 'confirmed'
+                      created_at TIMESTAMP,
+                      author VARCHAR(100)
 );
 ```
 
 ### events 테이블
 ```sql
 CREATE TABLE events (
-    event_id UUID PRIMARY KEY,
-    customer_id UUID REFERENCES customers(customer_id),
-    memo_id UUID REFERENCES memos(memo_id),
-    event_type VARCHAR(50), -- 'call', 'message', 'reminder', 'calendar'
-    scheduled_date DATE,
-    priority INTEGER,
-    status VARCHAR(20),
-    created_at TIMESTAMP
+                       event_id UUID PRIMARY KEY,
+                       customer_id UUID REFERENCES customers(customer_id),
+                       memo_id UUID REFERENCES memos(memo_id),
+                       event_type VARCHAR(50), -- 'call', 'message', 'reminder', 'calendar'
+                       scheduled_date DATE,
+                       priority INTEGER,
+                       status VARCHAR(20),
+                       created_at TIMESTAMP
 );
 ```
 

@@ -6,10 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db_models import CustomerMemo, AnalysisResult, Customer
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
+from app.utils.dynamic_prompt_loader import get_memo_refine_prompt, get_conditional_analysis_prompt, prompt_loader
+from app.models.prompt_models import PromptCategory
 import json
 import re
 import uuid
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -131,65 +134,51 @@ class MemoRefinerService:
             self.chat_model = "gpt-4"
             self.embedding_model = "text-embedding-ada-002"
         
-        # 시스템 프롬프트 정의
-        self.system_prompt = """당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
-고객 메모에서 다음 정보를 정확하게 추출해주세요:
-
-**중요: 시간 관련 표현을 놓치지 말고 모두 찾아주세요!**
-
-다음 정보를 추출하세요:
-1. 고객 상태/감정
-2. 주요 키워드 (관심사, 니즈, 고객명, 보험상품명 등)
-3. **시간 관련 표현** - 다음과 같은 모든 시간 표현을 찾아주세요:
-   - 상대적 시간: "내일", "모레", "2주 후", "1주일 뒤", "다음 주", "다음 달"
-   - 구체적 요일: "다음 주 화요일", "이번 주 금요일"
-   - 구체적 날짜: "12월 25일", "2024년 3월 15일"
-   - 시간: "오후 2시", "아침 9시"
-4. 필요한 후속 조치
-5. 보험 관련 정보
-
-출력은 반드시 다음 JSON 형식으로 제공하세요:
-{
-  "summary": "메모의 핵심 내용을 한 문장으로 요약",
-  "status": "고객의 현재 상태/감정",
-  "keywords": ["키워드1", "키워드2", "키워드3"],
-  "time_expressions": [{
-    "expression": "원본 시간 표현 (예: 다음 주 화요일)",
-    "parsed_date": null
-  }],
-  "required_actions": ["조치1", "조치2"],
-  "insurance_info": {
-    "products": ["언급된 보험상품"],
-    "premium_amount": "보험료 금액",
-    "interest_products": ["관심 상품"],
-    "policy_changes": ["정책 변경사항"]
-  }
-}
-
-**주의사항:**
-- time_expressions 배열에는 메모에서 발견되는 모든 시간 표현을 포함해야 합니다
-- parsed_date는 null로 두세요 (별도 파서에서 처리)
-- 시간 표현이 없으면 빈 배열 []로 설정
-- 고객명, 보험상품명은 keywords에 포함
-- required_actions는 구체적이고 실행 가능한 조치들로 작성
-
-보험업계 전문용어와 고객 서비스 관점에서 정확하게 분석하세요."""
+        # 동적 프롬프트 로딩을 위한 설정
+        self.use_dynamic_prompts = True
         
         self.parser = MemoRefinementParser()
     
-    async def refine_memo(self, memo: str) -> Dict[str, Any]:
+    async def refine_memo(self, memo: str, user_session: str = None, db_session: AsyncSession = None) -> Dict[str, Any]:
         """
-        OpenAI를 사용하여 메모를 정제하는 메인 메서드
+        OpenAI를 사용하여 메모를 정제하는 메인 메서드 (동적 프롬프트 지원)
         """
         try:
             logger.info(f"메모 정제 시작: {memo[:50]}...")
+            start_time = time.time()
+            
+            # 동적 프롬프트 로딩
+            if self.use_dynamic_prompts:
+                system_prompt = await get_memo_refine_prompt(memo, user_session, db_session)
+            else:
+                # 폴백 프롬프트 (하드코딩)
+                system_prompt = f"""당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
+고객 메모에서 다음 정보를 정확하게 추출해주세요:
+
+메모: {memo}
+
+다음 JSON 형식으로 응답해주세요:
+{{
+  "summary": "메모 요약",
+  "status": "고객 상태/감정",
+  "keywords": ["키워드1", "키워드2"],
+  "time_expressions": [
+    {{"expression": "2주 후", "parsed_date": "2024-01-15"}}
+  ],
+  "required_actions": ["필요한 후속 조치"],
+  "insurance_info": {{
+    "products": ["현재 가입 상품"],
+    "premium_amount": "보험료 정보",
+    "interest_products": ["관심 상품"],
+    "policy_changes": ["보험 변경사항"]
+  }}
+}}"""
             
             # Azure OpenAI API 호출
             response = await self.client.chat.completions.create(
                 model=self.chat_model,
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": f"메모: {memo}"}
+                    {"role": "user", "content": system_prompt}
                 ],
                 temperature=0.1,
                 max_tokens=1000
@@ -197,16 +186,20 @@ class MemoRefinerService:
             
             # 응답 텍스트 추출
             result_text = response.choices[0].message.content
+            end_time = time.time()
+            response_time_ms = int((end_time - start_time) * 1000)
             
             # LangSmith에 수동 로깅
             langsmith_manager.log_llm_call(
                 model=self.chat_model,
-                prompt=f"시스템: {self.system_prompt[:100]}...\n사용자: 메모: {memo}",
+                prompt=f"프롬프트: {system_prompt[:100]}...",
                 response=result_text,
                 metadata={
                     "function": "refine_memo",
                     "memo_length": len(memo),
-                    "response_length": len(result_text)
+                    "response_length": len(result_text),
+                    "response_time_ms": response_time_ms,
+                    "use_dynamic_prompts": self.use_dynamic_prompts
                 }
             )
             
@@ -215,6 +208,21 @@ class MemoRefinerService:
             
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
+            
+            # A/B 테스트 결과 기록 (동적 프롬프트 사용 시)
+            if self.use_dynamic_prompts and user_session:
+                try:
+                    await prompt_loader.record_usage_result(
+                        category=PromptCategory.MEMO_REFINE,
+                        user_session=user_session,
+                        input_data={"memo": memo},
+                        output_data=validated_result,
+                        response_time_ms=response_time_ms,
+                        success=True,
+                        db=db_session
+                    )
+                except Exception as e:
+                    logger.warning(f"A/B 테스트 결과 기록 실패: {e}")
             
             logger.info("메모 정제 완료")
             return validated_result
