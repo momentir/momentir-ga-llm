@@ -8,6 +8,7 @@ from sqlalchemy import select, and_, or_
 from app.db_models import Customer
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
+from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_column_mapping_prompt, prompt_loader
 from app.models.prompt_models import PromptCategory
 from datetime import datetime, date
@@ -21,19 +22,34 @@ logger = logging.getLogger(__name__)
 
 class CustomerService:
     def __init__(self):
-        # Azure OpenAI 클라이언트 설정
+        # 싱글톤 LLM 클라이언트 매니저 사용
+        self.llm_manager = llm_client_manager
+        
+        # 호환성을 위한 속성들 (기존 코드와의 호환성 유지)
+        self.llm_client = self.llm_manager.get_chat_client()
+        self.chat_model = self.llm_manager.get_chat_model_name()
+        
+        # Fallback용 원본 클라이언트
+        self._init_fallback_client()
+        
+        logger.info("✅ CustomerService 초기화 완료 (싱글톤 클라이언트 사용)")
+    
+    def _init_fallback_client(self):
+        """Fallback용 원본 클라이언트 초기화"""
         api_type = os.getenv("OPENAI_API_TYPE", "openai")
         
-        if api_type == "azure":
-            self.client = openai.AsyncAzureOpenAI(
-                api_key=os.getenv("OPENAI_API_KEY"),
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
-            )
-            self.chat_model = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4")
-        else:
-            self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            self.chat_model = "gpt-4"
+        try:
+            if api_type == "azure":
+                self.client = openai.AsyncAzureOpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+                )
+            else:
+                self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        except Exception as e:
+            logger.warning(f"⚠️  CustomerService Fallback 클라이언트 초기화 실패: {e}")
+            self.client = None
         
         # 표준 고객 스키마 정의
         self.standard_schema = {
@@ -203,17 +219,9 @@ JSON 형식으로 응답해주세요:
   "suggestions": ["매핑 개선 제안"]
 }}"""
 
-            # OpenAI API 호출
-            response = await self.client.chat.completions.create(
-                model=self.chat_model,
-                messages=[
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=1000
-            )
-
-            result_text = response.choices[0].message.content
+            # LangChain 클라이언트 사용 (LangSmith 자동 추적)
+            response = await self.llm_client.ainvoke(user_prompt)
+            result_text = response.content
             
             # JSON 파싱
             try:
@@ -231,22 +239,6 @@ JSON 형식으로 응답해주세요:
                 
                 end_time = time.time()
                 response_time_ms = int((end_time - start_time) * 1000)
-                
-                # LangSmith에 수동 로깅
-                langsmith_manager.log_llm_call(
-                    model=self.chat_model,
-                    prompt=f"컬럼 매핑: {json.dumps(excel_columns, ensure_ascii=False)}",
-                    response=result_text,
-                    metadata={
-                        "function": "map_excel_columns",
-                        "input_columns": excel_columns,
-                        "mapped_count": len([v for v in mapping.values() if v != "unmapped"]),
-                        "unmapped_count": len(unmapped_columns),
-                        "confidence_score": confidence_score,
-                        "response_time_ms": response_time_ms,
-                        "use_dynamic_prompts": self.use_dynamic_prompts
-                    }
-                )
                 
                 logger.info(f"엑셀 컬럼 매핑 완료: 신뢰도 {confidence_score}")
                 

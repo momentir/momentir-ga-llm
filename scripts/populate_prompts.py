@@ -55,7 +55,7 @@ INITIAL_PROMPTS = [
     "policy_changes": ["보험 변경사항"]
   }
 }
-
+'
 보험업계 전문용어와 고객 서비스 관점에서 정확하게 분석하세요.""",
         "variables": {"memo": "고객 메모 내용"},
         "created_by": "system"

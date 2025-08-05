@@ -2,7 +2,7 @@ import os
 from typing import Optional
 from functools import wraps
 from langsmith import Client
-from langchain.callbacks import LangChainTracer
+from langchain_core.tracers.langchain import LangChainTracer
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 import logging
 
@@ -34,10 +34,10 @@ class LangSmithManager:
                 os.environ["LANGCHAIN_TRACING_V2"] = "true"
                 os.environ["LANGCHAIN_API_KEY"] = api_key
                 os.environ["LANGCHAIN_PROJECT"] = self.project_name
-                os.environ["LANGCHAIN_ENDPOINT"] = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
+                os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
                 
-                # LangChain Tracer 초기화
-                self.tracer = LangChainTracer(project_name=self.project_name)
+                # LangChain Tracer 초기화 (최신 방식)
+                self.tracer = LangChainTracer()
                 
                 # LLM 클라이언트 초기화 (Azure 또는 OpenAI)
                 self._init_llm_client()

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db_models import CustomerMemo, AnalysisResult, Customer
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
+from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_memo_refine_prompt, get_conditional_analysis_prompt, prompt_loader
 from app.models.prompt_models import PromptCategory
 import json
@@ -100,44 +101,56 @@ class MemoRefinementParser:
 
 class MemoRefinerService:
     def __init__(self):
-        # Azure OpenAI 클라이언트 설정
-        api_type = os.getenv("OPENAI_API_TYPE", "openai")
-        
-        if api_type == "azure":
-            # Chat용 클라이언트
-            self.client = openai.AsyncAzureOpenAI(
-                api_key=os.getenv("OPENAI_API_KEY"),
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
-            )
-            self.chat_model = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4")
-            
-            # 임베딩 전용 클라이언트 (별도 리소스)
-            embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
-            embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
-            
-            if embedding_endpoint and embedding_api_key:
-                self.embedding_client = openai.AsyncAzureOpenAI(
-                    api_key=embedding_api_key,
-                    azure_endpoint=embedding_endpoint,
-                    api_version=os.getenv("AZURE_EMBEDDING_API_VERSION", "2024-02-01")
-                )
-                self.embedding_model = os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME", "text-embedding-3-small")
-                logger.info(f"✅ Azure 임베딩 전용 클라이언트 설정 완료: {self.embedding_model}")
-            else:
-                self.embedding_client = None
-                self.embedding_model = None
-                logger.warning("⚠️  임베딩 전용 리소스 설정이 없습니다.")
-        else:
-            self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            self.embedding_client = self.client
-            self.chat_model = "gpt-4"
-            self.embedding_model = "text-embedding-ada-002"
+        # 싱글톤 LLM 클라이언트 매니저 사용
+        self.llm_manager = llm_client_manager
         
         # 동적 프롬프트 로딩을 위한 설정
         self.use_dynamic_prompts = True
         
         self.parser = MemoRefinementParser()
+        
+        # 호환성을 위한 속성들 (기존 코드와의 호환성 유지)
+        self.llm_client = self.llm_manager.get_chat_client()
+        self.embedding_llm = self.llm_manager.get_embedding_client()
+        self.chat_model = self.llm_manager.get_chat_model_name()
+        self.embedding_model = self.llm_manager.get_embedding_model_name()
+        
+        # 원본 클라이언트들 (Fallback용)
+        self._init_fallback_clients()
+        
+        logger.info("✅ MemoRefinerService 초기화 완료 (싱글톤 클라이언트 사용)")
+    
+    def _init_fallback_clients(self):
+        """Fallback용 원본 클라이언트들 초기화"""
+        api_type = os.getenv("OPENAI_API_TYPE", "openai")
+        
+        try:
+            if api_type == "azure":
+                self.client = openai.AsyncAzureOpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
+                )
+                
+                embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
+                embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
+                
+                if embedding_endpoint and embedding_api_key:
+                    self.embedding_client = openai.AsyncAzureOpenAI(
+                        api_key=embedding_api_key,
+                        azure_endpoint=embedding_endpoint,
+                        api_version=os.getenv("AZURE_EMBEDDING_API_VERSION", "2024-02-01")
+                    )
+                else:
+                    self.embedding_client = None
+            else:
+                self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                self.embedding_client = self.client
+                
+        except Exception as e:
+            logger.warning(f"⚠️  Fallback 클라이언트 초기화 실패: {e}")
+            self.client = None
+            self.embedding_client = None
     
     async def refine_memo(self, memo: str, user_session: str = None, db_session: AsyncSession = None) -> Dict[str, Any]:
         """
@@ -174,34 +187,11 @@ class MemoRefinerService:
   }}
 }}"""
             
-            # Azure OpenAI API 호출
-            response = await self.client.chat.completions.create(
-                model=self.chat_model,
-                messages=[
-                    {"role": "user", "content": system_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            
-            # 응답 텍스트 추출
-            result_text = response.choices[0].message.content
+            # LangChain 클라이언트 사용 (LangSmith 자동 추적)
+            response = await self.llm_client.ainvoke(system_prompt)
+            result_text = response.content
             end_time = time.time()
             response_time_ms = int((end_time - start_time) * 1000)
-            
-            # LangSmith에 수동 로깅
-            langsmith_manager.log_llm_call(
-                model=self.chat_model,
-                prompt=f"프롬프트: {system_prompt[:100]}...",
-                response=result_text,
-                metadata={
-                    "function": "refine_memo",
-                    "memo_length": len(memo),
-                    "response_length": len(result_text),
-                    "response_time_ms": response_time_ms,
-                    "use_dynamic_prompts": self.use_dynamic_prompts
-                }
-            )
             
             # 파서를 통해 결과 파싱
             result = self.parser.parse(result_text)
@@ -276,41 +266,39 @@ class MemoRefinerService:
     async def create_embedding(self, text: str) -> Optional[List[float]]:
         """
         텍스트에 대한 임베딩 벡터를 생성합니다.
-        임베딩 전용 클라이언트를 사용하며, 실패 시 None을 반환합니다.
+        LangChain 임베딩 클라이언트를 사용하여 LangSmith 자동 추적을 지원합니다.
         """
-        if not self.embedding_client or not self.embedding_model:
-            logger.warning("임베딩 클라이언트가 설정되지 않았습니다.")
+        if not hasattr(self, 'embedding_llm') or not self.embedding_llm:
+            logger.warning("임베딩 LangChain 클라이언트가 설정되지 않았습니다.")
             return None
             
         try:
             logger.info(f"임베딩 생성 시작 ({self.embedding_model}): {text[:50]}...")
             
-            # Azure 임베딩 전용 클라이언트 사용
-            response = await self.embedding_client.embeddings.create(
-                model=self.embedding_model,
-                input=text
-            )
+            # LangChain 임베딩 클라이언트 사용 (자동 LangSmith 추적)
+            # 환경변수가 설정되어 있으면 자동으로 추적됨
+            embedding = await self.embedding_llm.aembed_query(text)
+            logger.info(f"임베딩 생성 완료 (LangSmith 자동 추적): 차원 {len(embedding)}")
             
-            embedding = response.data[0].embedding
-            
-            # LangSmith에 수동 로깅
-            langsmith_manager.log_llm_call(
-                model=self.embedding_model,
-                prompt=text,
-                response=f"임베딩 벡터 (차원: {len(embedding)})",
-                metadata={
-                    "function": "create_embedding",
-                    "text_length": len(text),
-                    "embedding_dimension": len(embedding),
-                    "embedding_service": "azure_dedicated"
-                }
-            )
-            
-            logger.info(f"임베딩 생성 완료: 차원 {len(embedding)}")
             return embedding
             
         except Exception as e:
-            logger.warning(f"임베딩 생성 실패 (임베딩 없이 계속 진행): {str(e)}")
+            logger.warning(f"LangChain 임베딩 생성 실패: {str(e)}")
+            
+            # Fallback: 원본 클라이언트 사용 (추적 없음)
+            if self.embedding_client and self.embedding_model:
+                try:
+                    logger.info("Fallback: 원본 임베딩 클라이언트 사용")
+                    response = await self.embedding_client.embeddings.create(
+                        model=self.embedding_model,
+                        input=text
+                    )
+                    embedding = response.data[0].embedding
+                    logger.info(f"Fallback 임베딩 생성 완료: 차원 {len(embedding)}")
+                    return embedding
+                except Exception as fallback_e:
+                    logger.warning(f"Fallback 임베딩도 실패: {fallback_e}")
+            
             return None
     
     async def save_memo_to_db(self, 
@@ -771,32 +759,16 @@ class MemoRefinerService:
 
 분석 결과는 실무진이 바로 활용할 수 있도록 구체적이고 실행 가능한 형태로 제시하세요."""
 
-            # Azure OpenAI API 호출
-            response = await self.client.chat.completions.create(
-                model=self.chat_model,
-                messages=[
-                    {"role": "system", "content": "당신은 20년 경력의 보험업계 전문 분석가입니다. 고객 데이터와 메모를 종합하여 실무진에게 유용한 인사이트를 제공합니다."},
-                    {"role": "user", "content": analysis_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=2000
-            )
+            # LangChain 클라이언트 사용 (LangSmith 자동 추적)
+            from langchain_core.messages import SystemMessage, HumanMessage
             
-            analysis_result = response.choices[0].message.content
+            messages = [
+                SystemMessage(content="당신은 20년 경력의 보험업계 전문 분석가입니다. 고객 데이터와 메모를 종합하여 실무진에게 유용한 인사이트를 제공합니다."),
+                HumanMessage(content=analysis_prompt)
+            ]
             
-            # LangSmith에 수동 로깅
-            langsmith_manager.log_llm_call(
-                model=self.chat_model,
-                prompt=analysis_prompt[:500] + "...",
-                response=analysis_result,
-                metadata={
-                    "function": "perform_enhanced_conditional_analysis",
-                    "customer_type": customer_type,
-                    "contract_status": contract_status,
-                    "has_customer_data": customer_data is not None,
-                    "analysis_focus": analysis_focus
-                }
-            )
+            response = await self.llm_client.ainvoke(messages)
+            analysis_result = response.content
             
             logger.info("향상된 조건부 분석 완료")
             return analysis_result
