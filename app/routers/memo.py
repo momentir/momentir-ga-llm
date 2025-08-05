@@ -80,7 +80,8 @@ async def refine_memo(request: MemoRefineRequest, db: AsyncSession = Depends(get
             )
         
         # 메모 정제 및 데이터베이스 저장
-        result = await memo_refiner.refine_and_save_memo(request.memo, db)
+        custom_prompt = getattr(request, 'custom_prompt', None)
+        result = await memo_refiner.refine_and_save_memo(request.memo, db, custom_prompt=custom_prompt)
         
         refined_data = result["refined_data"]
         

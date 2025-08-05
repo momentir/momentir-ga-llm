@@ -152,7 +152,7 @@ class MemoRefinerService:
             self.client = None
             self.embedding_client = None
     
-    async def refine_memo(self, memo: str, user_session: str = None, db_session: AsyncSession = None) -> Dict[str, Any]:
+    async def refine_memo(self, memo: str, user_session: str = None, db_session: AsyncSession = None, custom_prompt: str = None) -> Dict[str, Any]:
         """
         OpenAI를 사용하여 메모를 정제하는 메인 메서드 (동적 프롬프트 지원)
         """
@@ -160,9 +160,15 @@ class MemoRefinerService:
             logger.info(f"메모 정제 시작: {memo[:50]}...")
             start_time = time.time()
             
-            # 동적 프롬프트 로딩
-            if self.use_dynamic_prompts:
+            # 프롬프트 결정 로직 (우선순위: custom_prompt > 동적 프롬프트 > 폴백 프롬프트)
+            if custom_prompt:
+                # 사용자 정의 프롬프트 사용
+                system_prompt = custom_prompt.format(memo=memo)
+                logger.info("사용자 정의 프롬프트 사용")
+            elif self.use_dynamic_prompts:
+                # 동적 프롬프트 로딩
                 system_prompt = await get_memo_refine_prompt(memo, user_session, db_session)
+                logger.info("동적 프롬프트 사용")
             else:
                 # 폴백 프롬프트 (하드코딩)
                 system_prompt = f"""당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
@@ -186,6 +192,7 @@ class MemoRefinerService:
     "policy_changes": ["보험 변경사항"]
   }}
 }}"""
+                logger.info("기본 폴백 프롬프트 사용")
             
             # LangChain 클라이언트 사용 (LangSmith 자동 추적)
             response = await self.llm_client.ainvoke(system_prompt)
@@ -492,13 +499,14 @@ class MemoRefinerService:
     async def refine_and_save_memo(self, 
                                   memo: str, 
                                   db_session: AsyncSession,
-                                  auto_generate_events: bool = True) -> Dict[str, Any]:
+                                  auto_generate_events: bool = True,
+                                  custom_prompt: str = None) -> Dict[str, Any]:
         """
         메모를 정제하고 데이터베이스에 저장하는 통합 메서드
         """
         try:
             # 1. 메모 정제
-            refined_data = await self.refine_memo(memo)
+            refined_data = await self.refine_memo(memo, custom_prompt=custom_prompt)
             
             # 2. 데이터베이스에 저장
             memo_record = await self.save_memo_to_db(memo, refined_data, db_session)
