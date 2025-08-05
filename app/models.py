@@ -4,8 +4,8 @@ from datetime import datetime, date
 
 
 class MemoRefineRequest(BaseModel):
-    memo: str = Field(..., description="원본 고객 메모")
-    custom_prompt: Optional[str] = Field(default=None, description="사용자 정의 프롬프트 (없으면 기본 프롬프트 사용)")
+    memo: str
+    custom_prompt: Optional[str] = None
 
 
 class TimeExpressionResponse(BaseModel):

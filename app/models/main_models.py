@@ -5,6 +5,7 @@ from datetime import datetime, date
 
 class MemoRefineRequest(BaseModel):
     memo: str = Field(..., description="원본 고객 메모")
+    custom_prompt: Optional[str] = Field(None, description="사용자 정의 프롬프트")
 
 
 class TimeExpressionResponse(BaseModel):

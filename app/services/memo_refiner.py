@@ -44,11 +44,16 @@ class MemoRefinementParser:
             import json
             import re
             
+            logger.info(f"🔍 파싱할 텍스트 (처음 200자): {text[:200]}...")
+            
             # Extract JSON from the response if it's wrapped in text
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(0)
+                logger.info(f"🔍 추출된 JSON (처음 100자): {json_text[:100]}...")
+                
                 parsed_json = json.loads(json_text)
+                logger.info(f"✅ JSON 파싱 성공: {list(parsed_json.keys())}")
                 
                 # Validate and convert to our expected format (안전한 None 처리)
                 result = {
@@ -60,7 +65,9 @@ class MemoRefinementParser:
                     "insurance_info": self._safe_insurance_info(parsed_json.get("insurance_info", {}))
                 }
                 return result
-        except:
+        except Exception as e:
+            logger.warning(f"❌ JSON 파싱 실패: {e}")
+            logger.info(f"🔍 원본 텍스트: {text}")
             pass
         
         # Fallback to manual parsing for backward compatibility
@@ -173,20 +180,29 @@ class MemoRefinerService:
             start_time = time.time()
             
             # 프롬프트 결정 로직 (우선순위: custom_prompt > 동적 프롬프트 > 폴백 프롬프트)
+            logger.info(f"🔍 프롬프트 결정 - custom_prompt: {custom_prompt is not None}, use_dynamic_prompts: {self.use_dynamic_prompts}")
             if custom_prompt:
-                # 사용자 정의 프롬프트 사용
-                system_prompt = custom_prompt.format(memo=memo)
-                logger.info("사용자 정의 프롬프트 사용")
+                # 사용자 정의 프롬프트 사용 - {memo} 플레이스홀더가 있는 경우에만 format 적용
+                try:
+                    if "{memo}" in custom_prompt:
+                        system_prompt = custom_prompt.format(memo=memo)
+                    else:
+                        # 플레이스홀더가 없으면 메모를 프롬프트 끝에 추가
+                        system_prompt = f"{custom_prompt}\n\n메모: {memo}"
+                    logger.info(f"✅ 사용자 정의 프롬프트 사용: {custom_prompt[:100]}...")
+                except Exception as format_error:
+                    logger.error(f"❌ 프롬프트 포맷팅 오류: {format_error}")
+                    # 안전한 폴백: 메모를 끝에 추가
+                    system_prompt = f"{custom_prompt}\n\n메모: {memo}"
+                    logger.info(f"✅ 폴백 프롬프트 사용")
             elif self.use_dynamic_prompts:
                 # 동적 프롬프트 로딩
                 system_prompt = await get_memo_refine_prompt(memo, user_session, db_session)
-                logger.info("동적 프롬프트 사용")
+                logger.info(f"✅ 동적 프롬프트 사용: {system_prompt[:100]}...")
             else:
                 # 폴백 프롬프트 (하드코딩)
                 system_prompt = f"""당신은 보험회사의 고객 메모를 분석하는 전문가입니다.
 고객 메모에서 다음 정보를 정확하게 추출해주세요:
-
-메모: {memo}
 
 다음 JSON 형식으로 응답해주세요:
 {{
@@ -203,8 +219,11 @@ class MemoRefinerService:
     "interest_products": ["관심 상품"],
     "policy_changes": ["보험 변경사항"]
   }}
-}}"""
-                logger.info("기본 폴백 프롬프트 사용")
+}}
+"""
+                logger.info("❌ 기본 폴백 프롬프트 사용")
+            
+            logger.info(f"🚀 실제 사용될 프롬프트 (처음 200자): {system_prompt[:200]}...")
             
             # LangChain 클라이언트 사용 (LangSmith 자동 추적)
             response = await self.llm_client.ainvoke(system_prompt)
@@ -212,8 +231,26 @@ class MemoRefinerService:
             end_time = time.time()
             response_time_ms = int((end_time - start_time) * 1000)
             
-            # 파서를 통해 결과 파싱
+            # 파서를 통해 결과 파싱 (사용자 정의 프롬프트도 JSON 형태로 처리 시도)
+            logger.info("✅ LLM 응답 파싱 시작")
             result = self.parser.parse(result_text)
+            
+            # 사용자 정의 프롬프트로 파싱에 실패한 경우 간단한 응답 구조로 처리
+            if custom_prompt and not result.get("summary"):
+                logger.info("✅ 사용자 정의 프롬프트 - JSON 파싱 실패, 단순 텍스트로 처리")
+                result = {
+                    "summary": result_text.strip()[:500] if result_text.strip() else "응답 없음",
+                    "status": "사용자 정의 프롬프트 응답",
+                    "keywords": [],
+                    "time_expressions": [],
+                    "required_actions": [],
+                    "insurance_info": {
+                        "products": [],
+                        "premium_amount": None,
+                        "interest_products": [],
+                        "policy_changes": []
+                    }
+                }
             
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
@@ -518,7 +555,7 @@ class MemoRefinerService:
         """
         try:
             # 1. 메모 정제
-            refined_data = await self.refine_memo(memo, custom_prompt=custom_prompt)
+            refined_data = await self.refine_memo(memo, user_session=None, db_session=db_session, custom_prompt=custom_prompt)
             
             # 2. 데이터베이스에 저장
             memo_record = await self.save_memo_to_db(memo, refined_data, db_session)

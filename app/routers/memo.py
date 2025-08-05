@@ -4,6 +4,9 @@ from app.models import MemoRefineRequest, RefinedMemoResponse, MemoAnalyzeReques
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/memo", tags=["memo"])
 memo_refiner = MemoRefinerService()
