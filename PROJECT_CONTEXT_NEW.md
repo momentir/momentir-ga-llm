@@ -106,7 +106,7 @@
 ### Phase 5: 벡터 DB 최적화 및 이벤트 고도화
 **목표**: pgvector 활용, 이벤트 파이프라인 개선
 
-#### Step 13: pgvector 전환
+#### Step 13: pgvector 전환 ✅ (완료)
 ```bash
 # Claude Code 명령
 "현재 JSONB로 저장된 임베딩을 pgvector의 vector 타입으로 전환하고, 효율적인 유사도 검색을 구현해줘"

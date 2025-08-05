@@ -357,45 +357,65 @@ class MemoRefinerService:
                                 db_session: AsyncSession, 
                                 limit: int = 5) -> List[CustomerMemo]:
         """
-        유사한 메모를 벡터 검색으로 찾습니다.
-        Python 기반 코사인 유사도를 사용합니다.
+        pgvector를 사용한 효율적인 유사도 검색
+        코사인 유사도 기반으로 가장 유사한 메모들을 찾습니다.
         """
         try:
             # 입력 메모의 임베딩 생성
             query_embedding = await self.create_embedding(memo)
             
             if query_embedding is not None:
-                # 모든 임베딩이 있는 메모들을 가져오기
-                stmt = select(CustomerMemo).where(
-                    CustomerMemo.embedding.is_not(None)
-                )
-                result = await db_session.execute(stmt)
-                all_memos = result.scalars().all()
+                # pgvector의 코사인 유사도를 사용한 효율적인 검색
+                # 1 - (embedding <=> query_vector)로 유사도 계산 (높을수록 유사)
+                from sqlalchemy import text
                 
-                if not all_memos:
+                # 쿼리 임베딩을 PostgreSQL vector 형태로 변환
+                vector_str = '[' + ','.join(map(str, query_embedding)) + ']'
+                
+                # pgvector의 코사인 거리 연산자(<=>)를 사용한 효율적인 검색
+                stmt = text("""
+                    SELECT id, customer_id, original_memo, refined_memo, status, author, 
+                           embedding, created_at,
+                           1 - (embedding <=> :query_vector) as similarity
+                    FROM customer_memos 
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> :query_vector
+                    LIMIT :limit
+                """)
+                
+                result = await db_session.execute(stmt, {"query_vector": vector_str, "limit": limit})
+                rows = result.fetchall()
+                
+                if not rows:
                     logger.info("임베딩이 있는 메모가 없습니다. 최근 메모를 반환합니다.")
                     return await self._get_recent_memos(db_session, limit)
                 
-                # 코사인 유사도 계산 및 정렬
-                memo_similarities = []
-                for memo_record in all_memos:
-                    if memo_record.embedding and isinstance(memo_record.embedding, list):
-                        similarity = self._calculate_cosine_similarity(query_embedding, memo_record.embedding)
-                        memo_similarities.append((memo_record, similarity))
+                # 결과를 CustomerMemo 객체로 변환
+                similar_memos = []
+                for row in rows:
+                    # 각 행에서 CustomerMemo 객체 재구성
+                    memo_obj = CustomerMemo(
+                        id=row.id,
+                        customer_id=row.customer_id,
+                        original_memo=row.original_memo,
+                        refined_memo=row.refined_memo,
+                        status=row.status,
+                        author=row.author,
+                        embedding=row.embedding,
+                        created_at=row.created_at
+                    )
+                    similar_memos.append(memo_obj)
                 
-                # 유사도 기준으로 정렬하고 상위 N개 반환
-                memo_similarities.sort(key=lambda x: x[1], reverse=True)
-                similar_memos = [memo for memo, _ in memo_similarities[:limit]]
-                
-                logger.info(f"유사도 검색 완료: {len(similar_memos)}개 메모 반환")
+                logger.info(f"pgvector 유사도 검색 완료: {len(similar_memos)}개 메모 반환")
                 return similar_memos
             else:
                 logger.warning("쿼리 임베딩 생성 실패, 최근 메모를 반환합니다.")
                 return await self._get_recent_memos(db_session, limit)
             
         except Exception as e:
-            logger.warning(f"유사 메모 검색 실패, 최근 메모를 반환합니다: {str(e)}")
-            return await self._get_recent_memos(db_session, limit)
+            logger.warning(f"pgvector 유사 메모 검색 실패, 최근 메모를 반환합니다: {str(e)}")
+            # Fallback: 기존 Python 기반 검색 사용
+            return await self._find_similar_memos_fallback(memo, db_session, limit)
     
     async def _get_recent_memos(self, db_session: AsyncSession, limit: int) -> List[CustomerMemo]:
         """최근 메모들을 반환하는 헬퍼 함수"""
@@ -405,6 +425,69 @@ class MemoRefinerService:
             return result.scalars().all()
         except:
             return []
+    
+    async def _find_similar_memos_fallback(self, 
+                                         memo: str, 
+                                         db_session: AsyncSession, 
+                                         limit: int = 5) -> List[CustomerMemo]:
+        """
+        Python 기반 코사인 유사도를 사용한 폴백 메모 검색
+        pgvector가 실패했을 때 사용됩니다.
+        """
+        try:
+            logger.info("Python 기반 유사도 검색 실행 (폴백 모드)")
+            
+            # 쿼리 임베딩 생성
+            query_embedding = await self.create_embedding(memo)
+            if not query_embedding:
+                logger.warning("쿼리 임베딩 생성 실패, 최근 메모를 반환합니다.")
+                return await self._get_recent_memos(db_session, limit)
+            
+            # 임베딩이 있는 모든 메모 조회
+            stmt = select(CustomerMemo).where(CustomerMemo.embedding.isnot(None))
+            result = await db_session.execute(stmt)
+            memos_with_embeddings = result.scalars().all()
+            
+            if not memos_with_embeddings:
+                logger.info("임베딩이 있는 메모가 없습니다. 최근 메모를 반환합니다.")
+                return await self._get_recent_memos(db_session, limit)
+            
+            # 유사도 계산 및 정렬
+            memo_similarities = []
+            for memo_record in memos_with_embeddings:
+                try:
+                    # 임베딩이 리스트인지 확인 (이전 JSONB 형태 또는 vector 형태)
+                    embedding = memo_record.embedding
+                    if isinstance(embedding, list):
+                        memo_embedding = embedding
+                    elif hasattr(embedding, 'tolist'):
+                        # pgvector 형태인 경우
+                        memo_embedding = embedding.tolist()
+                    else:
+                        logger.warning(f"메모 {memo_record.id}의 임베딩 형태를 인식할 수 없습니다: {type(embedding)}")
+                        continue
+                    
+                    # 코사인 유사도 계산
+                    similarity = self._calculate_cosine_similarity(query_embedding, memo_embedding)
+                    memo_similarities.append((memo_record, similarity))
+                    
+                except Exception as e:
+                    logger.warning(f"메모 {memo_record.id}의 유사도 계산 실패: {e}")
+                    continue
+            
+            # 유사도 기준으로 정렬 (높은 순)
+            memo_similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            # 상위 N개 메모 반환
+            similar_memos = [memo_record for memo_record, similarity in memo_similarities[:limit]]
+            
+            logger.info(f"Python 기반 유사도 검색 완료: {len(similar_memos)}개 메모 반환")
+            return similar_memos
+            
+        except Exception as e:
+            logger.error(f"Python 기반 유사도 검색 실패: {str(e)}")
+            # 마지막 폴백: 최근 메모 반환
+            return await self._get_recent_memos(db_session, limit)
     
     async def refine_and_save_memo(self, 
                                   memo: str, 

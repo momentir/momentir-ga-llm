@@ -3,6 +3,7 @@ from sqlalchemy import Column, String, Text, DateTime, UUID, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 from app.database import Base
 
 
@@ -16,7 +17,7 @@ class CustomerMemo(Base):
     refined_memo = Column(JSONB, nullable=True, comment="정제된 메모 (JSON 형태)")
     status = Column(String(20), default="draft", comment="메모 상태: draft, refined, confirmed")
     author = Column(String(100), nullable=True, comment="작성자")
-    embedding = Column(JSONB, nullable=True, comment="OpenAI embedding vector (stored as JSON array)")
+    embedding = Column(Vector(1536), nullable=True, comment="OpenAI embedding vector (pgvector type, 1536 dimensions)")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="생성 시간")
     
     # 관계 설정
