@@ -6,7 +6,7 @@ echo "🔍 PostgreSQL 연결 테스트"
 echo "=========================="
 
 # 연결 정보
-DB_HOST="momentir-cx-llm-db.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com"
+DB_HOST="momentir-cx.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com"
 DB_PORT="5432"
 DB_NAME="momentir-cx-llm"
 DB_USER="dbadmin"

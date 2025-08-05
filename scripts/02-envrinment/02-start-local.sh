@@ -47,7 +47,7 @@ if [ ! -f ".env" ]; then
     echo "   ➤ .env 파일이 없습니다. 생성합니다..."
     cat > .env << EOF
 # PostgreSQL 데이터베이스 설정
-DATABASE_URL=postgresql://dbadmin:5JYbqQeiuQI7tYNaDoFAnp0oL@momentir-cx-llm-db.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com:5432/momentir-cx-llm
+DATABASE_URL=postgresql://dbadmin:5JYbqQeiuQI7tYNaDoFAnp0oL@momentir-cx.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com:5432/momentir-cx-llm
 
 # OpenAI API 설정 (실제 키로 교체 필요)
 OPENAI_API_KEY=your-openai-api-key-here

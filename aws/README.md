@@ -79,7 +79,7 @@ sudo yum install postgresql
 |--------|------|------|
 | ECR Repository | `momentir-cx-llm` | Docker 이미지 저장소 |
 | ECS Cluster | `momentir-cx-llm-cluster` | 컨테이너 오케스트레이션 |
-| RDS Instance | `momentir-cx-llm-db` | PostgreSQL 17.5 데이터베이스 |
+| RDS Instance | `momentir-cx` | PostgreSQL 17.5 데이터베이스 |
 | Security Group | `momentir-cx-llm-sg` | 네트워크 보안 규칙 |
 | ALB | `momentir-cx-llm-alb` | 로드 밸런서 |
 | Target Group | `momentir-cx-llm-tg` | ALB 타겟 그룹 |
@@ -123,7 +123,7 @@ AWS_DEFAULT_REGION=ap-northeast-2
 aws logs describe-log-groups --region ap-northeast-2
 
 # RDS 로그
-aws rds describe-db-log-files --db-instance-identifier momentir-cx-llm-db --region ap-northeast-2
+aws rds describe-db-log-files --db-instance-identifier momentir-cx --region ap-northeast-2
 ```
 
 ## 💰 비용 관리

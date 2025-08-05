@@ -16,7 +16,7 @@ from app.services.prompt_service import PromptService
 from app.models.prompt_models import PromptTemplateCreate, PromptVersionCreate, PromptCategory
 
 # 환경변수에서 데이터베이스 URL 가져오기
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dbadmin:5JYbqQeiuQI7tYNaDoFAnp0oL@momentir-cx-llm-db.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com:5432/momentir-cx-llm")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dbadmin:5JYbqQeiuQI7tYNaDoFAnp0oL@momentir-cx.ctacoom6szjg.ap-northeast-2.rds.amazonaws.com:5432/momentir-cx-llm")
 
 # PostgreSQL URL을 AsyncPG 형식으로 변환
 if DATABASE_URL.startswith("postgresql://"):
