@@ -86,3 +86,23 @@ class PromptTestResult(Base):
     # 관계
     test = relationship("PromptABTest", back_populates="test_results")
     version = relationship("PromptVersion", back_populates="test_results")
+
+
+class PromptTestLog(Base):
+    """프롬프트 테스트 로그 테이블 - 프롬프트 관리 시스템에서의 테스트 기록"""
+    __tablename__ = "prompt_test_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    prompt_content = Column(Text, nullable=False, comment="테스트한 프롬프트 내용")
+    memo_content = Column(Text, nullable=False, comment="입력된 메모 내용")  
+    llm_response = Column(Text, nullable=False, comment="LLM 응답 내용")
+    response_time_ms = Column(Integer, nullable=True, comment="응답 시간 (밀리초)")
+    tokens_used = Column(Integer, nullable=True, comment="사용된 토큰 수")
+    success = Column(Boolean, nullable=False, default=True, comment="성공 여부")
+    error_message = Column(Text, nullable=True, comment="오류 메시지 (실패시)")
+    user_session = Column(String(100), nullable=True, comment="사용자 세션 ID")
+    source = Column(String(50), nullable=False, default="prompt_manager", comment="테스트 소스: prompt_manager, api_direct")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True, comment="요청일시")
+
+    def __repr__(self):
+        return f"<PromptTestLog(id={self.id}, created_at={self.created_at}, success={self.success})>"

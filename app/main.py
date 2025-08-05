@@ -84,6 +84,10 @@ app.include_router(customer.router)
 app.include_router(events.router)
 app.include_router(prompts.router)
 
+# 프롬프트 테스트 로그 라우터 추가
+from app.routers import prompt_logs
+app.include_router(prompt_logs.router)
+
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -6,4 +6,4 @@ from .main_models import (
 )
 
 # Import prompt management models
-from .prompt_models import PromptTemplate, PromptVersion, PromptABTest, PromptTestResult
+from .prompt_models import PromptTemplate, PromptVersion, PromptABTest, PromptTestResult, PromptTestLog

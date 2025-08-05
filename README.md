@@ -67,7 +67,7 @@ OPENAI_API_KEY=sk-your-actual-openai-api-key-here
 ## ☁️ AWS 배포
 
 ### 전체 배포 가이드
-상세한 AWS 배포 과정은 [DEPLOYMENT.md](DEPLOYMENT.md)를 참조하세요.
+상세한 AWS 배포 과정은 [DEPLOYMENT.md](documents/guide/DEPLOYMENT.md)를 참조하세요.
 
 ### 빠른 배포 (요약)
 
@@ -219,4 +219,4 @@ alembic upgrade head
    - AWS 자격 증명 확인
    - VPC 및 서브넷 설정 확인
 
-더 자세한 문제 해결은 [DEPLOYMENT.md](DEPLOYMENT.md)를 참조하세요.
+더 자세한 문제 해결은 [DEPLOYMENT.md](documents/guide/DEPLOYMENT.md)를 참조하세요.

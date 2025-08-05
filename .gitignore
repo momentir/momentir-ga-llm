@@ -339,4 +339,4 @@ k8s-secrets.yaml
 # Build artifacts
 dist-docker/
 build-artifacts/
-DEPLOYMENT.md
+documents/guide/DEPLOYMENT.md

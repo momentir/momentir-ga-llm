@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db_models import CustomerMemo, AnalysisResult, Customer
+from app.db_models.prompt_models import PromptTestLog
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
 from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_memo_refine_prompt, get_conditional_analysis_prompt, prompt_loader
@@ -255,6 +256,17 @@ class MemoRefinerService:
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
             
+            # 사용자 정의 프롬프트인 경우 테스트 로그 저장
+            if custom_prompt and db_session:
+                await self._save_prompt_test_log(
+                    prompt_content=custom_prompt,
+                    memo_content=memo,
+                    llm_response=result_text,
+                    response_time_ms=response_time_ms,
+                    success=True,
+                    db_session=db_session
+                )
+            
             # A/B 테스트 결과 기록 (동적 프롬프트 사용 시)
             if self.use_dynamic_prompts and user_session:
                 try:
@@ -275,6 +287,22 @@ class MemoRefinerService:
             
         except Exception as e:
             logger.error(f"메모 정제 중 오류: {str(e)}")
+            
+            # 에러 발생 시에도 사용자 정의 프롬프트인 경우 로그 저장
+            if custom_prompt and db_session:
+                try:
+                    await self._save_prompt_test_log(
+                        prompt_content=custom_prompt,
+                        memo_content=memo,
+                        llm_response="",
+                        response_time_ms=int((time.time() - start_time) * 1000),
+                        success=False,
+                        error_message=str(e),
+                        db_session=db_session
+                    )
+                except Exception as log_error:
+                    logger.warning(f"프롬프트 테스트 로그 저장 실패: {log_error}")
+            
             raise Exception(f"메모 정제 중 오류가 발생했습니다: {str(e)}")
     
     def _validate_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -972,3 +1000,37 @@ class MemoRefinerService:
             
         except Exception as e:
             raise Exception(f"고객 분석 통계 조회 중 오류가 발생했습니다: {str(e)}")
+    
+    async def _save_prompt_test_log(self, 
+                                   prompt_content: str,
+                                   memo_content: str, 
+                                   llm_response: str,
+                                   response_time_ms: int,
+                                   success: bool = True,
+                                   error_message: str = None,
+                                   db_session: AsyncSession = None) -> None:
+        """
+        프롬프트 테스트 로그를 데이터베이스에 저장합니다.
+        """
+        if not db_session:
+            return
+            
+        try:
+            log_record = PromptTestLog(
+                prompt_content=prompt_content,
+                memo_content=memo_content,
+                llm_response=llm_response,
+                response_time_ms=response_time_ms,
+                success=success,
+                error_message=error_message,
+                source="api_direct"  # /api/memo/refine에서 호출
+            )
+            
+            db_session.add(log_record)
+            await db_session.commit()
+            
+            logger.info(f"프롬프트 테스트 로그 저장 완료 (ID: {log_record.id})")
+            
+        except Exception as e:
+            logger.error(f"프롬프트 테스트 로그 저장 실패: {e}")
+            await db_session.rollback()
