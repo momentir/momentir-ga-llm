@@ -50,14 +50,14 @@ class MemoRefinementParser:
                 json_text = json_match.group(0)
                 parsed_json = json.loads(json_text)
                 
-                # Validate and convert to our expected format
+                # Validate and convert to our expected format (안전한 None 처리)
                 result = {
                     "summary": parsed_json.get("summary", ""),
                     "status": parsed_json.get("status", ""),
-                    "keywords": parsed_json.get("keywords", []),
-                    "time_expressions": parsed_json.get("time_expressions", []),
-                    "required_actions": parsed_json.get("required_actions", []),
-                    "insurance_info": parsed_json.get("insurance_info", {})
+                    "keywords": parsed_json.get("keywords") or [],
+                    "time_expressions": parsed_json.get("time_expressions") or [],
+                    "required_actions": parsed_json.get("required_actions") or [],
+                    "insurance_info": self._safe_insurance_info(parsed_json.get("insurance_info", {}))
                 }
                 return result
         except:
@@ -97,6 +97,18 @@ class MemoRefinementParser:
                     result["required_actions"] = [a.strip() for a in actions_text.split(',') if a.strip()]
         
         return result
+    
+    def _safe_insurance_info(self, insurance_data: Dict[str, Any]) -> Dict[str, Any]:
+        """보험 정보의 None 값을 안전하게 처리"""
+        if not isinstance(insurance_data, dict):
+            insurance_data = {}
+        
+        return {
+            "products": insurance_data.get("products") or [],
+            "premium_amount": insurance_data.get("premium_amount"),
+            "interest_products": insurance_data.get("interest_products") or [],
+            "policy_changes": insurance_data.get("policy_changes") or []
+        }
 
 
 class MemoRefinerService:

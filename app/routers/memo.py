@@ -99,22 +99,22 @@ async def refine_memo(request: MemoRefineRequest, db: AsyncSession = Depends(get
                     parsed_date=None
                 ))
         
-        # 보험 정보 변환
+        # 보험 정보 변환 (None 값 안전 처리)
         insurance_data = refined_data.get("insurance_info", {})
         insurance_info = InsuranceInfoResponse(
-            products=insurance_data.get("products", []),
+            products=insurance_data.get("products") or [],
             premium_amount=insurance_data.get("premium_amount"),
-            interest_products=insurance_data.get("interest_products", []),
-            policy_changes=insurance_data.get("policy_changes", [])
+            interest_products=insurance_data.get("interest_products") or [],
+            policy_changes=insurance_data.get("policy_changes") or []
         )
         
         return RefinedMemoResponse(
             memo_id=result["memo_id"],
             summary=refined_data.get("summary", ""),
             status=refined_data.get("status", ""),
-            keywords=refined_data.get("keywords", []),
+            keywords=refined_data.get("keywords") or [],
             time_expressions=time_expressions,
-            required_actions=refined_data.get("required_actions", []),
+            required_actions=refined_data.get("required_actions") or [],
             insurance_info=insurance_info,
             original_memo=request.memo,
             similar_memos_count=result["similar_memos_count"],
