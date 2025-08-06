@@ -15,10 +15,35 @@ class LangSmithManager:
         self.enabled = False
         self.client: Optional[Client] = None
         self.tracer: Optional[LangChainTracer] = None
-        self.project_name = os.getenv("LANGSMITH_PROJECT", "momentir-cx-llm")
+        self.project_name = self._get_project_name()
         self.llm_client = None
         
         self._initialize()
+    
+    def _get_project_name(self) -> str:
+        """환경별 LangSmith 프로젝트명 결정"""
+        # 기본값 설정
+        default_project = "momentir-cx-llm"
+        
+        # 환경 감지
+        is_production = os.getenv("ENVIRONMENT") == "production" or os.getenv("AWS_EXECUTION_ENV") is not None
+        
+        # 메모 정제용 프로젝트명
+        if is_production:
+            return "momentir-cx-llm-memo"
+        else:
+            return "local-llm-memo"
+    
+    def get_excel_upload_project_name(self) -> str:
+        """엑셀 업로드용 프로젝트명 반환"""
+        # 환경 감지
+        is_production = os.getenv("ENVIRONMENT") == "production" or os.getenv("AWS_EXECUTION_ENV") is not None
+        
+        # 엑셀 업로드용 프로젝트명
+        if is_production:
+            return "momentir-cx-llm-excel-upload"
+        else:
+            return "local-llm-excel-upload"
     
     def _initialize(self):
         """LangSmith 초기화"""
@@ -75,14 +100,24 @@ class LangSmithManager:
         except Exception as e:
             logger.warning(f"⚠️  LLM 클라이언트 초기화 실패: {e}")
     
-    def get_callbacks(self):
-        """LangChain 콜백 반환"""
+    def get_callbacks(self, project_name: Optional[str] = None):
+        """LangChain 콜백 반환 (프로젝트별 설정 지원)"""
         if self.enabled and self.tracer:
+            # 프로젝트명이 지정된 경우, 환경변수 임시 변경
+            if project_name:
+                original_project = os.environ.get("LANGCHAIN_PROJECT")
+                os.environ["LANGCHAIN_PROJECT"] = project_name
+                # 새로운 tracer 생성
+                temp_tracer = LangChainTracer()
+                # 원래 환경변수 복원
+                if original_project:
+                    os.environ["LANGCHAIN_PROJECT"] = original_project
+                return [temp_tracer]
             return [self.tracer]
         return []
     
-    def trace_run(self, name: str, run_type: str = "llm", metadata: dict = None):
-        """실행 추적 데코레이터"""
+    def trace_run(self, name: str, run_type: str = "llm", metadata: dict = None, project_name: Optional[str] = None):
+        """실행 추적 데코레이터 (프로젝트별 설정 지원)"""
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
@@ -94,16 +129,29 @@ class LangSmithManager:
                     run_metadata = {
                         "function": func.__name__,
                         "module": func.__module__,
+                        "project": project_name or self.project_name,
                         **(metadata or {})
                     }
                     
                     # 실행 시작 로깅
-                    logger.info(f"🔍 LangSmith 추적 시작: {name}")
+                    used_project = project_name or self.project_name
+                    logger.info(f"🔍 LangSmith 추적 시작: {name} (프로젝트: {used_project})")
                     
-                    result = await func(*args, **kwargs)
+                    # 프로젝트명이 지정된 경우, 환경변수 임시 변경
+                    original_project = None
+                    if project_name:
+                        original_project = os.environ.get("LANGCHAIN_PROJECT")
+                        os.environ["LANGCHAIN_PROJECT"] = project_name
+                    
+                    try:
+                        result = await func(*args, **kwargs)
+                    finally:
+                        # 원래 환경변수 복원
+                        if project_name and original_project:
+                            os.environ["LANGCHAIN_PROJECT"] = original_project
                     
                     # 실행 완료 로깅
-                    logger.info(f"✅ LangSmith 추적 완료: {name}")
+                    logger.info(f"✅ LangSmith 추적 완료: {name} (프로젝트: {used_project})")
                     
                     return result
                     
@@ -114,28 +162,46 @@ class LangSmithManager:
             return wrapper
         return decorator
     
-    def log_llm_call(self, model: str, prompt: str, response: str, metadata: dict = None):
-        """LLM 호출 수동 로깅"""
+    def log_llm_call(self, model: str, prompt: str, response: str, metadata: dict = None, project_name: Optional[str] = None):
+        """LLM 호출 수동 로깅 (프로젝트별 설정 지원)"""
         if not self.enabled or not self.client:
             return
             
         try:
-            self.client.create_run(
-                name=f"llm_call_{model}",
-                run_type="llm",
-                inputs={"prompt": prompt},
-                outputs={"response": response},
-                extra={
-                    "model": model,
-                    **(metadata or {})
-                }
-            )
+            # 프로젝트명이 지정된 경우 환경변수 임시 변경
+            original_project = None
+            if project_name:
+                original_project = os.environ.get("LANGCHAIN_PROJECT")
+                os.environ["LANGCHAIN_PROJECT"] = project_name
+            
+            try:
+                self.client.create_run(
+                    name=f"llm_call_{model}",
+                    run_type="llm",
+                    inputs={"prompt": prompt},
+                    outputs={"response": response},
+                    extra={
+                        "model": model,
+                        "project": project_name or self.project_name,
+                        **(metadata or {})
+                    }
+                )
+            finally:
+                # 원래 환경변수 복원
+                if project_name and original_project:
+                    os.environ["LANGCHAIN_PROJECT"] = original_project
+                    
         except Exception as e:
             logger.warning(f"⚠️  LangSmith 수동 로깅 실패: {e}")
 
 # 전역 LangSmith 매니저 인스턴스
 langsmith_manager = LangSmithManager()
 
-def trace_llm_call(name: str, metadata: dict = None):
-    """LLM 호출 추적 데코레이터"""
-    return langsmith_manager.trace_run(name, "llm", metadata)
+def trace_llm_call(name: str, metadata: dict = None, project_name: Optional[str] = None):
+    """LLM 호출 추적 데코레이터 (프로젝트별 설정 지원)"""
+    return langsmith_manager.trace_run(name, "llm", metadata, project_name)
+
+def trace_excel_upload_call(name: str, metadata: dict = None):
+    """엑셀 업로드 관련 LLM 호출 추적 데코레이터"""
+    project_name = langsmith_manager.get_excel_upload_project_name()
+    return langsmith_manager.trace_run(name, "llm", metadata, project_name)

@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, or_, func
 from app.db_models import Customer, CustomerProduct, User
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
 from app.models.main_models import CustomerProductCreate, CustomerProductResponse
-from app.utils.langsmith_config import langsmith_manager, trace_llm_call
+from app.utils.langsmith_config import langsmith_manager, trace_llm_call, trace_excel_upload_call
 from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_column_mapping_prompt, prompt_loader
 from app.models.prompt_models import PromptCategory
@@ -368,6 +368,7 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
+    @trace_excel_upload_call("excel_column_mapping", metadata={"operation": "column_mapping"})
     async def map_excel_columns(self, excel_columns: List[str], user_session: str = None, db_session: AsyncSession = None, custom_prompt: str = None) -> Dict[str, Any]:
         """
         LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다. (동적 프롬프트 지원)
@@ -437,8 +438,14 @@ JSON 형식으로 응답해주세요:
   "confidence_score": 0.95
 }}"""
 
-            # LangChain 클라이언트 사용 (LangSmith 자동 추적)
-            response = await self.llm_client.ainvoke(user_prompt)
+            # LangChain 클라이언트를 엑셀 업로드 프로젝트로 설정하여 사용
+            excel_project_name = langsmith_manager.get_excel_upload_project_name()
+            
+            # 엑셀 업로드 전용 콜백 설정
+            callbacks = langsmith_manager.get_callbacks(excel_project_name)
+            
+            # LangChain 클라이언트 사용 (엑셀 업로드 프로젝트로 LangSmith 추적)
+            response = await self.llm_client.ainvoke(user_prompt, config={"callbacks": callbacks})
             result_text = response.content
             
             # JSON 파싱 (마크다운 코드 블록 제거)
@@ -538,6 +545,7 @@ JSON 형식으로 응답해주세요:
         except Exception as e:
             raise Exception(f"컬럼 매핑 중 오류가 발생했습니다: {str(e)}")
 
+    @trace_excel_upload_call("excel_data_processing", metadata={"operation": "data_processing"})
     async def process_excel_data(self, df: pd.DataFrame, column_mapping: Dict[str, str], user_id: int, db_session: AsyncSession) -> Dict[str, Any]:
         """
         엑셀 데이터를 처리하여 고객 데이터를 생성/업데이트합니다.
