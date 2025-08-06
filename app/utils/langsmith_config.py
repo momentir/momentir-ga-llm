@@ -103,15 +103,10 @@ class LangSmithManager:
     def get_callbacks(self, project_name: Optional[str] = None):
         """LangChain 콜백 반환 (프로젝트별 설정 지원)"""
         if self.enabled and self.tracer:
-            # 프로젝트명이 지정된 경우, 환경변수 임시 변경
+            # 프로젝트명이 지정된 경우, 새로운 tracer 생성
             if project_name:
-                original_project = os.environ.get("LANGCHAIN_PROJECT")
-                os.environ["LANGCHAIN_PROJECT"] = project_name
-                # 새로운 tracer 생성
-                temp_tracer = LangChainTracer()
-                # 원래 환경변수 복원
-                if original_project:
-                    os.environ["LANGCHAIN_PROJECT"] = original_project
+                # 프로젝트명을 직접 지정하여 tracer 생성
+                temp_tracer = LangChainTracer(project_name=project_name)
                 return [temp_tracer]
             return [self.tracer]
         return []
