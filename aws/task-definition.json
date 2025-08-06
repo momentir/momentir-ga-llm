@@ -1,9 +1,11 @@
 {
   "family": "momentir-cx-llm",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "256",
-  "memory": "512",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "2048",
   "executionRoleArn": "arn:aws:iam::940482450816:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::940482450816:role/ecsTaskRole",
   "containerDefinitions": [
@@ -98,7 +100,10 @@
         }
       },
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"],
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/health || exit 1"
+        ],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
