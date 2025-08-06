@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>엑셀 업로드 LLM 정제 테스트 시스템</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f6fa;
+            color: #2f3640;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e1e8ed;
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            min-height: 200px;
+            resize: vertical;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .file-upload-area:hover {
+            border-color: #667eea;
+            background-color: #f8f9ff;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #667eea;
+            background-color: #e3f2fd;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .upload-hint {
+            font-size: 14px;
+            color: #adb5bd;
+        }
+
+        .selected-file {
+            background: #e8f5e8;
+            border: 1px solid #28a745;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        .selected-file .file-name {
+            font-weight: 600;
+            color: #155724;
+        }
+
+        .selected-file .file-info {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            grid-column: 1 / -1;
+            margin-top: 20px;
+        }
+
+        .result-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .success {
+            border-left: 4px solid #2ecc71;
+            background-color: #d5f4e6;
+        }
+
+        .error {
+            border-left: 4px solid #e74c3c;
+            background-color: #ffeaea;
+        }
+
+        .warning {
+            border-left: 4px solid #f39c12;
+            background-color: #fff5e1;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-bar {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .user-id-input {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+        }
+
+        .settings-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .settings-panel h3 {
+            margin-bottom: 15px;
+            color: #495057;
+            font-size: 1.1em;
+        }
+
+        .settings-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            align-items: end;
+        }
+
+        .supported-fields {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .supported-fields h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .field-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 5px;
+            font-size: 12px;
+            color: #424242;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .settings-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 엑셀 업로드 LLM 정제 테스트 시스템</h1>
+            <p>보험설계사 고객 엑셀 데이터의 LLM 기반 자동 정제 및 분석을 테스트해보세요</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 프롬프트 및 설정 관리 섹션 -->
+            <div class="card">
+                <h2>⚙️ LLM 프롬프트 및 설정</h2>
+                
+                <div class="settings-panel">
+                    <h3>기본 설정</h3>
+                    <div class="settings-row">
+                        <div class="form-group">
+                            <label for="user-id">설계사 ID (필수)</label>
+                            <input type="number" id="user-id" class="user-id-input" placeholder="예: 1" value="1">
+                            <small style="color: #6c757d;">테스트용 설계사 ID를 입력하세요</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="test-mode">테스트 모드</label>
+                            <select id="test-mode">
+                                <option value="standard">표준 처리</option>
+                                <option value="debug">디버그 모드</option>
+                                <option value="dry-run">미리보기 (저장 안함)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="custom-prompt">커스텀 컬럼 매핑 프롬프트</label>
+                    <textarea id="custom-prompt" placeholder="기본 프롬프트를 사용하거나 커스텀 프롬프트를 입력하세요..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-secondary" onclick="loadDefaultPrompt()">📋 기본 프롬프트 로드</button>
+                    <button class="btn btn-secondary" onclick="clearPrompt()">🔄 초기화</button>
+                </div>
+
+                <div class="supported-fields">
+                    <h4>🔍 지원하는 데이터 필드</h4>
+                    <div class="field-list">
+                        <div>• 고객이름 (customer_name)</div>
+                        <div>• 고객유형 (customer_type)</div>
+                        <div>• 접점채널 (contact_channel)</div>
+                        <div>• 전화번호 (phone)</div>
+                        <div>• 주민번호 (resident_number)</div>
+                        <div>• 주소 (address)</div>
+                        <div>• 직업 (job_title)</div>
+                        <div>• 계좌은행 (bank_name)</div>
+                        <div>• 계좌번호 (account_number)</div>
+                        <div>• 소개자 (referrer)</div>
+                        <div>• 상품명 (product_name)</div>
+                        <div>• 가입금액 (coverage_amount)</div>
+                        <div>• 가입일 (subscription_date)</div>
+                        <div>• 종료일/갱신일 (expiry_renewal_date)</div>
+                        <div>• 자동이체일 (auto_transfer_date)</div>
+                        <div>• 증권교부 (policy_issued)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 엑셀 파일 업로드 섹션 -->
+            <div class="card">
+                <h2>📁 엑셀 파일 업로드</h2>
+                
+                <div class="form-group">
+                    <div class="file-upload-area" onclick="document.getElementById('file-input').click()">
+                        <input type="file" id="file-input" class="file-input" accept=".xlsx,.xls" onchange="handleFileSelect(event)">
+                        <div class="upload-icon">📊</div>
+                        <div class="upload-text">클릭하여 엑셀 파일을 선택하거나</div>
+                        <div class="upload-hint">파일을 여기로 드래그 & 드롭하세요</div>
+                        <div class="upload-hint">(지원 형식: .xlsx, .xls | 최대 100MB)</div>
+                    </div>
+                    <div id="selected-file" style="display: none;"></div>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-success" id="upload-btn" onclick="uploadExcelFile()" disabled>🚀 LLM 정제 실행</button>
+                    <button class="btn btn-warning" onclick="testColumnMapping()" disabled id="mapping-test-btn">🔍 컬럼 매핑 테스트</button>
+                    <button class="btn btn-secondary" onclick="clearFile()">🗑️ 파일 초기화</button>
+                </div>
+
+                <div class="loading" id="upload-loading">
+                    <div class="spinner"></div>
+                    <div id="upload-status">LLM이 엑셀 데이터를 분석하고 있습니다...</div>
+                    <div class="progress-bar" style="margin-top: 15px;">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 결과 섹션 -->
+        <div class="results-section">
+            <div class="card">
+                <h2>📊 LLM 정제 결과</h2>
+                <div id="result-container">
+                    <p style="color: #6c757d; text-align: center; padding: 40px;">
+                        엑셀 파일을 업로드하고 LLM 정제를 실행하면 결과가 여기에 표시됩니다.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let uploadProgress = 0;
+
+        // 기본 컬럼 매핑 프롬프트
+        const DEFAULT_MAPPING_PROMPT = `당신은 보험설계사의 고객 엑셀 데이터를 분석하는 전문가입니다.
+주어진 엑셀 컬럼들을 표준 필드와 정확히 매핑해주세요.
+
+매핑 규칙:
+- 성명, 고객명, 이름, 고객이름 → customer_name
+- 핸드폰, 전화번호, 연락처, 전화 → phone  
+- 분류, 유형, 고객유형 → customer_type
+- 경로, 접점, 채널 → contact_channel
+- 거주지, 주소 → address
+- 직장, 직업 → job_title
+- 주민등록번호, 주민번호 → resident_number
+- 보험상품, 상품명, 가입상품, 보험명 → product_name
+- 보장액, 가입금액, 보장금액 → coverage_amount
+- 계약일, 가입일 → subscription_date
+- 갱신일, 만료일, 종료일 → expiry_renewal_date
+- 이체일, 납입일 → auto_transfer_date
+- 증권발급, 증권교부 → policy_issued
+- 은행, 계좌은행 → bank_name
+- 계좌, 계좌번호 → account_number
+- 소개자, 추천인 → referrer
+
+정확히 JSON 형식으로만 응답해주세요:
+{
+  "mapping": {
+    "엑셀컬럼명": "표준필드명"
+  },
+  "confidence_score": 0.95
+}`;
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFileUpload();
+        });
+
+        // 파일 업로드 영역 초기화
+        function initializeFileUpload() {
+            const uploadArea = document.querySelector('.file-upload-area');
+            
+            // 드래그 앤 드롭 이벤트 처리
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileSelect({target: {files: files}});
+                }
+            });
+        }
+
+        // 파일 선택 처리
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 파일 타입 검증
+            const allowedTypes = [
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+                'application/vnd.ms-excel' // xls
+            ];
+
+            if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                showResult('지원하지 않는 파일 형식입니다. .xlsx 또는 .xls 파일만 업로드 가능합니다.', 'error');
+                return;
+            }
+
+            // 파일 크기 검증 (100MB)
+            if (file.size > 100 * 1024 * 1024) {
+                showResult('파일 크기가 너무 큽니다. 최대 100MB까지 업로드 가능합니다.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+
+            // 선택된 파일 표시
+            const selectedFileDiv = document.getElementById('selected-file');
+            selectedFileDiv.innerHTML = `
+                <div class="selected-file">
+                    <div class="file-name">📊 ${file.name}</div>
+                    <div class="file-info">크기: ${formatFileSize(file.size)} | 수정일: ${new Date(file.lastModified).toLocaleString()}</div>
+                </div>
+            `;
+            selectedFileDiv.style.display = 'block';
+
+            // 버튼 활성화
+            document.getElementById('upload-btn').disabled = false;
+            document.getElementById('mapping-test-btn').disabled = false;
+
+            showResult(`파일이 선택되었습니다: ${file.name}`, 'success');
+        }
+
+        // 파일 크기 포맷팅
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 기본 프롬프트 로드
+        function loadDefaultPrompt() {
+            document.getElementById('custom-prompt').value = DEFAULT_MAPPING_PROMPT;
+            showResult('기본 컬럼 매핑 프롬프트가 로드되었습니다.', 'success');
+        }
+
+        // 프롬프트 초기화
+        function clearPrompt() {
+            document.getElementById('custom-prompt').value = '';
+            showResult('프롬프트가 초기화되었습니다.', 'success');
+        }
+
+        // 파일 초기화
+        function clearFile() {
+            selectedFile = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('selected-file').style.display = 'none';
+            document.getElementById('upload-btn').disabled = true;
+            document.getElementById('mapping-test-btn').disabled = true;
+            showResult('선택된 파일이 초기화되었습니다.', 'success');
+        }
+
+        // 컬럼 매핑 테스트
+        async function testColumnMapping() {
+            if (!selectedFile) {
+                showResult('먼저 엑셀 파일을 선택해주세요.', 'error');
+                return;
+            }
+
+            const userId = document.getElementById('user-id').value;
+            if (!userId) {
+                showResult('설계사 ID를 입력해주세요.', 'error');
+                return;
+            }
+
+            const loadingEl = document.getElementById('upload-loading');
+            const statusEl = document.getElementById('upload-status');
+            
+            statusEl.textContent = 'LLM이 엑셀 컬럼을 분석하고 있습니다...';
+            loadingEl.classList.add('show');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('user_id', userId);
+
+                const customPrompt = document.getElementById('custom-prompt').value.trim();
+                if (customPrompt) {
+                    formData.append('custom_prompt', customPrompt);
+                }
+
+                const response = await fetch('/api/customer/column-mapping', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    const displayMessage = `=== 컬럼 매핑 분석 결과 ===\n${JSON.stringify(result, null, 2)}`;
+                    showResult(displayMessage, 'success');
+                } else {
+                    showResult(`오류: ${result.detail || '알 수 없는 오류가 발생했습니다.'}`, 'error');
+                }
+
+            } catch (error) {
+                showResult(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                loadingEl.classList.remove('show');
+            }
+        }
+
+        // 엑셀 파일 업로드 및 LLM 정제
+        async function uploadExcelFile() {
+            if (!selectedFile) {
+                showResult('먼저 엑셀 파일을 선택해주세요.', 'error');
+                return;
+            }
+
+            const userId = document.getElementById('user-id').value;
+            if (!userId) {
+                showResult('설계사 ID를 입력해주세요.', 'error');
+                return;
+            }
+
+            const loadingEl = document.getElementById('upload-loading');
+            const statusEl = document.getElementById('upload-status');
+            const progressFill = document.getElementById('progress-fill');
+            
+            statusEl.textContent = 'LLM이 엑셀 데이터를 분석하고 정제하고 있습니다...';
+            loadingEl.classList.add('show');
+
+            // 진행률 시뮬레이션
+            simulateProgress();
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('user_id', userId);
+
+                const testMode = document.getElementById('test-mode').value;
+                if (testMode !== 'standard') {
+                    formData.append('test_mode', testMode);
+                }
+
+                const customPrompt = document.getElementById('custom-prompt').value.trim();
+                if (customPrompt) {
+                    formData.append('custom_prompt', customPrompt);
+                }
+
+                const response = await fetch('/api/customer/excel-upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                // 진행률 100% 완료
+                progressFill.style.width = '100%';
+                progressFill.textContent = '완료!';
+
+                if (response.ok) {
+                    const displayMessage = formatUploadResult(result);
+                    showResult(displayMessage, 'success');
+                } else {
+                    showResult(`오류: ${result.detail || '알 수 없는 오류가 발생했습니다.'}`, 'error');
+                }
+
+            } catch (error) {
+                showResult(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                setTimeout(() => {
+                    loadingEl.classList.remove('show');
+                    progressFill.style.width = '0%';
+                    progressFill.textContent = '0%';
+                    uploadProgress = 0;
+                }, 1000);
+            }
+        }
+
+        // 업로드 결과 포맷팅
+        function formatUploadResult(result) {
+            let message = '=== LLM 엑셀 데이터 정제 결과 ===\n\n';
+            
+            // 기본 통계
+            message += `📊 처리 통계:\n`;
+            message += `- 처리된 행 수: ${result.processed_rows || 0}\n`;
+            message += `- 생성된 고객 수: ${result.created_customers || 0}\n`;
+            message += `- 수정된 고객 수: ${result.updated_customers || 0}\n`;
+            message += `- 총 상품 수: ${result.total_products || 0}\n`;
+            message += `- 생성된 상품 수: ${result.created_products || 0}\n`;
+            message += `- 실패한 상품 수: ${result.failed_products || 0}\n\n`;
+
+            // 성능 지표
+            if (result.mapping_success_rate !== undefined) {
+                message += `🎯 매핑 성공률: ${(result.mapping_success_rate * 100).toFixed(1)}%\n`;
+            }
+            
+            if (result.processing_time_seconds) {
+                message += `⏱️  처리 시간: ${result.processing_time_seconds.toFixed(2)}초\n\n`;
+            }
+
+            // 오류 정보
+            if (result.errors && result.errors.length > 0) {
+                message += `⚠️  오류 목록 (${result.errors.length}건):\n`;
+                result.errors.slice(0, 10).forEach((error, index) => {
+                    message += `${index + 1}. ${error}\n`;
+                });
+                if (result.errors.length > 10) {
+                    message += `... 그 외 ${result.errors.length - 10}개 오류\n`;
+                }
+                message += '\n';
+            }
+
+            // 전체 응답
+            message += `=== 전체 API 응답 ===\n${JSON.stringify(result, null, 2)}`;
+            
+            return message;
+        }
+
+        // 진행률 시뮬레이션
+        function simulateProgress() {
+            const progressFill = document.getElementById('progress-fill');
+            const statusEl = document.getElementById('upload-status');
+            
+            const steps = [
+                { progress: 20, message: '파일을 읽고 있습니다...' },
+                { progress: 40, message: 'LLM이 컬럼을 분석하고 있습니다...' },
+                { progress: 60, message: '데이터를 정제하고 있습니다...' },
+                { progress: 80, message: '고객 정보를 저장하고 있습니다...' },
+                { progress: 90, message: '가입상품 정보를 처리하고 있습니다...' }
+            ];
+
+            let currentStep = 0;
+            const interval = setInterval(() => {
+                if (currentStep < steps.length) {
+                    const step = steps[currentStep];
+                    progressFill.style.width = step.progress + '%';
+                    progressFill.textContent = step.progress + '%';
+                    statusEl.textContent = step.message;
+                    uploadProgress = step.progress;
+                    currentStep++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 1500);
+        }
+
+        // 결과 표시
+        function showResult(message, type = 'success') {
+            const container = document.getElementById('result-container');
+            const resultBox = document.createElement('div');
+            resultBox.className = `result-box ${type}`;
+            resultBox.textContent = message;
+
+            container.innerHTML = '';
+            container.appendChild(resultBox);
+            
+            // 결과 섹션으로 스크롤
+            resultBox.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

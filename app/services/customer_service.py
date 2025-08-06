@@ -368,7 +368,7 @@ class CustomerService:
         except Exception as e:
             raise Exception(f"고객 검색 중 오류가 발생했습니다: {str(e)}")
 
-    async def map_excel_columns(self, excel_columns: List[str], user_session: str = None, db_session: AsyncSession = None) -> Dict[str, Any]:
+    async def map_excel_columns(self, excel_columns: List[str], user_session: str = None, db_session: AsyncSession = None, custom_prompt: str = None) -> Dict[str, Any]:
         """
         LLM을 사용하여 엑셀 컬럼명을 표준 스키마로 매핑합니다. (동적 프롬프트 지원)
         """
@@ -376,8 +376,23 @@ class CustomerService:
             logger.info(f"엑셀 컬럼 매핑 시작: {excel_columns}")
             start_time = time.time()
             
-            # 동적 프롬프트 로딩
-            if self.use_dynamic_prompts:
+            # 프롬프트 결정
+            if custom_prompt:
+                # 사용자 제공 커스텀 프롬프트 사용
+                user_prompt = f"""{custom_prompt}
+
+엑셀 컬럼: {excel_columns}
+
+JSON 형식으로 응답해주세요:
+{{
+  "mapping": {{
+    "엑셀컬럼명": "표준필드명",
+    "매핑불가컬럼": "unmapped"
+  }},
+  "confidence_score": 0.95,
+  "suggestions": ["매핑 개선 제안"]
+}}"""
+            elif self.use_dynamic_prompts:
                 user_prompt = await get_column_mapping_prompt(
                     excel_columns, 
                     self.standard_schema, 
@@ -385,40 +400,67 @@ class CustomerService:
                     db_session
                 )
             else:
-                # 폴백 프롬프트 (하드코딩)
-                user_prompt = f"""당신은 엑셀 컬럼명을 표준 고객 스키마로 매핑하는 전문가입니다.
-
-표준 스키마:
-{json.dumps(self.standard_schema, ensure_ascii=False, indent=2)}
-
-엑셀 컬럼명들을 표준 스키마로 매핑해주세요:
+                # 폴백 프롬프트 (하드코딩) - 더 구체적이고 명확한 매핑 가이드
+                user_prompt = f"""당신은 보험설계사의 고객 엑셀 데이터를 분석하는 전문가입니다.
+다음 엑셀 컬럼들을 표준 필드와 정확히 매핑해주세요.
 
 엑셀 컬럼: {excel_columns}
 
-각 엑셀 컬럼이 어떤 표준 필드에 해당하는지 매핑하고,
-매핑할 수 없는 컬럼은 'unmapped'로 표시하세요.
+매핑 규칙:
+- 성명, 고객명, 이름 → customer_name
+- 핸드폰, 전화번호, 연락처 → phone  
+- 분류, 유형, 고객유형 → customer_type
+- 경로, 접점, 채널 → contact_channel
+- 거주지, 주소 → address
+- 직장, 직업 → job_title
+- 주민등록번호, 주민번호 → resident_number
+- 보험상품, 상품명, 가입상품 → product_name
+- 보장액, 가입금액, 보장금액 → coverage_amount
+- 계약일, 가입일 → subscription_date
+- 증권발급, 증권교부 → policy_issued
 
-JSON 형식으로 응답해주세요:
+정확히 JSON 형식으로만 응답해주세요:
 {{
-  "mappings": {{
-    "엑셀컬럼명": "표준필드명",
-    "매핑불가컬럼": "unmapped"
+  "mapping": {{
+    "성명": "customer_name",
+    "핸드폰": "phone",
+    "분류": "customer_type",
+    "경로": "contact_channel",
+    "거주지": "address",
+    "직장": "job_title",
+    "주민등록번호": "resident_number",
+    "보험상품": "product_name",
+    "보장액": "coverage_amount",
+    "계약일": "subscription_date",
+    "증권발급": "policy_issued"
   }},
-  "confidence": 0.95,
-  "suggestions": ["매핑 개선 제안"]
+  "confidence_score": 0.95
 }}"""
 
             # LangChain 클라이언트 사용 (LangSmith 자동 추적)
             response = await self.llm_client.ainvoke(user_prompt)
             result_text = response.content
             
-            # JSON 파싱
+            # JSON 파싱 (마크다운 코드 블록 제거)
             try:
-                result = json.loads(result_text)
+                logger.info(f"LLM 응답 원본: {result_text}")
                 
-                # 검증 및 기본값 설정
-                mapping = result.get("mapping", {})
-                confidence_score = result.get("confidence_score", 0.5)
+                # 마크다운 코드 블록 제거
+                clean_text = result_text
+                if '```json' in result_text and '```' in result_text:
+                    # ```json과 ``` 사이의 내용 추출
+                    import re
+                    json_pattern = r'```json\s*(.*?)\s*```'
+                    match = re.search(json_pattern, result_text, re.DOTALL)
+                    if match:
+                        clean_text = match.group(1).strip()
+                        logger.info(f"마크다운 코드 블록에서 JSON 추출: {clean_text}")
+                
+                result = json.loads(clean_text)
+                
+                # 검증 및 기본값 설정 (mapping/mappings, confidence_score/confidence 모두 지원)
+                mapping = result.get("mapping", result.get("mappings", {}))
+                confidence_score = result.get("confidence_score", result.get("confidence", 0.5))
                 
                 # unmapped 컬럼들 추출
                 unmapped_columns = [
@@ -456,8 +498,37 @@ JSON 형식으로 응답해주세요:
                 return final_result
 
             except json.JSONDecodeError:
-                # JSON 파싱 실패 시 기본 매핑 반환
-                logger.warning("JSON 파싱 실패, 기본 매핑 반환")
+                # JSON 파싱 실패 시 정규식으로 JSON 추출 시도
+                logger.warning("JSON 파싱 실패, 정규식으로 JSON 추출 시도")
+                import re
+                
+                # JSON 패턴 찾기
+                json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+                json_matches = re.findall(json_pattern, result_text, re.DOTALL)
+                
+                for json_str in json_matches:
+                    try:
+                        result = json.loads(json_str)
+                        if "mapping" in result or "mappings" in result:
+                            mapping = result.get("mapping", result.get("mappings", {}))
+                            confidence_score = result.get("confidence_score", result.get("confidence", 0.5))
+                            
+                            unmapped_columns = [
+                                col for col, mapped_field in mapping.items() 
+                                if mapped_field == "unmapped"
+                            ]
+                            
+                            logger.info(f"정규식으로 JSON 추출 성공: {len(mapping)}개 컬럼 매핑")
+                            return {
+                                "mapping": mapping,
+                                "unmapped_columns": unmapped_columns,
+                                "confidence_score": min(max(confidence_score, 0.0), 1.0)
+                            }
+                    except:
+                        continue
+                
+                # 모든 시도 실패 시 기본 매핑 반환
+                logger.warning("모든 JSON 파싱 시도 실패, 기본 매핑 반환")
                 return {
                     "mapping": {col: "unmapped" for col in excel_columns},
                     "unmapped_columns": excel_columns,
@@ -523,41 +594,39 @@ JSON 형식으로 응답해주세요:
             
             logger.info(f"데이터 추출 완료: {len(customer_groups)} 고객 그룹")
             
-            # 2단계: 트랜잭션 내에서 고객 및 상품 처리
-            async with db_session.begin():
-                for customer_key, row_data_list in customer_groups.items():
-                    try:
-                        # 고객 데이터 통합
-                        merged_customer_data, products_data = self._merge_customer_data(row_data_list, user_id)
+            # 2단계: 고객 및 상품 처리
+            for customer_key, row_data_list in customer_groups.items():
+                try:
+                    # 고객 데이터 통합
+                    merged_customer_data, products_data = self._merge_customer_data(row_data_list, user_id)
+                    
+                    # 기존 고객 확인 (중복 체크)
+                    existing_customer = await self._find_existing_customer(merged_customer_data, user_id, db_session)
+                    
+                    if existing_customer:
+                        # 기존 고객 업데이트
+                        await self._update_existing_customer(existing_customer, merged_customer_data, db_session)
+                        customer = existing_customer
+                        updated_customers += 1
+                    else:
+                        # 새 고객 생성
+                        customer = await self._create_new_customer(merged_customer_data, db_session)
+                        created_customers += 1
+                    
+                    # 가입상품 처리
+                    product_results = await self._process_customer_products(
+                        customer, products_data, db_session
+                    )
+                    total_products += product_results['total']
+                    created_products += product_results['created']
+                    failed_products += product_results['failed']
+                    
+                    if product_results['errors']:
+                        errors.extend(product_results['errors'])
                         
-                        # 기존 고객 확인 (중복 체크)
-                        existing_customer = await self._find_existing_customer(merged_customer_data, user_id, db_session)
-                        
-                        if existing_customer:
-                            # 기존 고객 업데이트
-                            await self._update_existing_customer(existing_customer, merged_customer_data, db_session)
-                            customer = existing_customer
-                            updated_customers += 1
-                        else:
-                            # 새 고객 생성
-                            customer = await self._create_new_customer(merged_customer_data, db_session)
-                            created_customers += 1
-                        
-                        # 가입상품 처리
-                        product_results = await self._process_customer_products(
-                            customer, products_data, db_session
-                        )
-                        total_products += product_results['total']
-                        created_products += product_results['created']
-                        failed_products += product_results['failed']
-                        
-                        if product_results['errors']:
-                            errors.extend(product_results['errors'])
-                            
-                    except Exception as e:
-                        errors.append(f"고객 {customer_key} 처리 오류: {str(e)}")
-                        await db_session.rollback()
-                        continue
+                except Exception as e:
+                    errors.append(f"고객 {customer_key} 처리 오류: {str(e)}")
+                    continue
             
             # 처리 시간 계산
             processing_time = time.time() - start_time
@@ -584,7 +653,6 @@ JSON 형식으로 응답해주세요:
             }
 
         except Exception as e:
-            await db_session.rollback()
             logger.error(f"엑셀 데이터 처리 중 심각한 오류: {str(e)}")
             raise Exception(f"엑셀 데이터 처리 중 오류가 발생했습니다: {str(e)}")
     

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import List, Optional
 import pandas as pd
 import io
@@ -10,6 +11,7 @@ from app.models import (
     ErrorResponse
 )
 from app.models.main_models import ExcelUploadRequest, CustomerProductCreate, CustomerProductResponse
+from app.db_models.main_models import User
 from app.services.customer_service import CustomerService
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
@@ -514,11 +516,18 @@ async def list_customers(
 
 
 @router.post("/column-mapping", response_model=ColumnMappingResponse)
-async def map_excel_columns(request: ColumnMappingRequest):
+async def map_excel_columns(
+    file: UploadFile = File(..., description="컬럼 매핑할 엑셀 파일"),
+    user_id: int = Form(..., description="설계사 ID"),
+    custom_prompt: Optional[str] = Form(None, description="커스텀 매핑 프롬프트"),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    엑셀 컬럼명을 표준 스키마로 매핑합니다.
+    엑셀 파일의 컬럼명을 표준 스키마로 매핑합니다.
     
-    - **excel_columns**: 엑셀 파일의 컬럼명 리스트
+    - **file**: 매핑할 엑셀 파일
+    - **user_id**: 설계사 ID 
+    - **custom_prompt**: 커스텀 매핑 프롬프트 (선택사항)
     
     기능:
     - LLM을 사용한 지능형 컬럼 매핑
@@ -527,7 +536,49 @@ async def map_excel_columns(request: ColumnMappingRequest):
     - 신뢰도 점수 제공
     """
     try:
-        result = await customer_service.map_excel_columns(request.excel_columns)
+        # 파일 타입 검증
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(
+                status_code=400,
+                detail="지원하지 않는 파일 형식입니다. .xlsx 또는 .xls 파일만 업로드 가능합니다."
+            )
+        
+        # 설계사 존재 확인
+        user_stmt = select(User).where(User.id == user_id)
+        user_result = await db.execute(user_stmt)
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail=f"설계사 ID {user_id}를 찾을 수 없습니다.")
+        
+        # 엑셀 파일 읽기
+        try:
+            # 파일 포인터를 처음으로 이동
+            await file.seek(0)
+            # 파일 내용을 바이트로 읽기
+            contents = await file.read()
+            # BytesIO 객체로 변환
+            excel_buffer = io.BytesIO(contents)
+            # pandas로 엑셀 읽기
+            df = pd.read_excel(excel_buffer, engine='openpyxl')
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"엑셀 파일 읽기 실패: {str(e)}"
+            )
+        
+        if df.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="엑셀 파일이 비어있습니다."
+            )
+        
+        # 컬럼 매핑 실행
+        excel_columns = df.columns.tolist()
+        result = await customer_service.map_excel_columns(
+            excel_columns, 
+            db_session=db, 
+            custom_prompt=custom_prompt
+        )
         
         return ColumnMappingResponse(
             mapping=result["mapping"],
@@ -535,6 +586,8 @@ async def map_excel_columns(request: ColumnMappingRequest):
             confidence_score=result["confidence_score"]
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

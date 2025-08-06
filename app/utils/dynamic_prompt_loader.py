@@ -35,7 +35,9 @@ class DynamicPromptLoader:
         # DB 세션이 없으면 새로 생성
         close_db = False
         if db is None:
-            db = await anext(get_db())
+            # Python 3.9 호환성: anext() 대신 __anext__() 사용
+            db_generator = get_db()
+            db = await db_generator.__anext__()
             close_db = True
         
         try:
@@ -100,7 +102,9 @@ class DynamicPromptLoader:
         # DB 세션이 없으면 새로 생성
         close_db = False
         if db is None:
-            db = await anext(get_db())
+            # Python 3.9 호환성: anext() 대신 __anext__() 사용
+            db_generator = get_db()
+            db = await db_generator.__anext__()
             close_db = True
         
         try:
