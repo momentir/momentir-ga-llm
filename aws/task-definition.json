@@ -5,13 +5,13 @@
     "FARGATE"
   ],
   "cpu": "1024",
-  "memory": "2048",
+  "memory": "3072",
   "executionRoleArn": "arn:aws:iam::940482450816:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::940482450816:role/ecsTaskRole",
   "containerDefinitions": [
     {
       "name": "momentir-cx-llm",
-      "image": "940482450816.dkr.ecr.ap-northeast-2.amazonaws.com/momentir-cx-llm:latest",
+      "image": "940482450816.dkr.ecr.ap-northeast-2.amazonaws.com/momentir-cx-llm:bfea2cf646ba4eb2b4f0e07661b6de2fef444f75",
       "portMappings": [
         {
           "containerPort": 8000,
@@ -20,10 +20,6 @@
       ],
       "essential": true,
       "environment": [
-        {
-          "name": "LANGSMITH_PROJECT",
-          "value": "default"
-        },
         {
           "name": "OPENAI_API_TYPE",
           "value": "azure"
@@ -53,10 +49,6 @@
           "value": "false"
         },
         {
-          "name": "LANGSMITH_TRACING",
-          "value": "true"
-        },
-        {
           "name": "LANGCHAIN_TRACING_V2",
           "value": "true"
         },
@@ -77,6 +69,14 @@
         {
           "name": "LANGSMITH_API_KEY",
           "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-api-key-INvQ0v"
+        },
+        {
+          "name": "LANGSMITH_TRACING",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/langsmith-tracing-zWGI3D"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:940482450816:secret:momentir-cx-llm/environment-AivvOq"
         },
         {
           "name": "AZURE_OPENAI_ENDPOINT",
@@ -102,7 +102,7 @@
       "healthCheck": {
         "command": [
           "CMD-SHELL",
-          "curl -f http://localhost:8000/health || exit 1"
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/').getcode() == 200\" || exit 1"
         ],
         "interval": 30,
         "timeout": 5,
