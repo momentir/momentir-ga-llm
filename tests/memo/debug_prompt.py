@@ -5,7 +5,7 @@
 import asyncio
 import sys
 import os
-sys.path.append('.')
+sys.path.append('../..')
 
 from app.models import MemoRefineRequest
 from app.services.memo_refiner import MemoRefinerService
