@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
+from fastapi import UploadFile
 
 
 class MemoRefineRequest(BaseModel):
@@ -65,8 +66,31 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = Field(None, description="상세 에러 정보")
 
 
+# 고객 상품 관련 모델들
+class CustomerProductCreate(BaseModel):
+    product_name: Optional[str] = Field(None, description="가입상품명")
+    coverage_amount: Optional[str] = Field(None, description="가입금액")
+    subscription_date: Optional[date] = Field(None, description="가입일자")
+    expiry_renewal_date: Optional[date] = Field(None, description="종료일/갱신일")
+    auto_transfer_date: Optional[str] = Field(None, description="자동이체일")
+    policy_issued: Optional[bool] = Field(False, description="증권교부여부")
+
+
+class CustomerProductResponse(BaseModel):
+    product_id: str = Field(..., description="상품 ID")
+    product_name: Optional[str] = Field(None, description="가입상품명")
+    coverage_amount: Optional[str] = Field(None, description="가입금액")
+    subscription_date: Optional[date] = Field(None, description="가입일자")
+    expiry_renewal_date: Optional[date] = Field(None, description="종료일/갱신일")
+    auto_transfer_date: Optional[str] = Field(None, description="자동이체일")
+    policy_issued: Optional[bool] = Field(False, description="증권교부여부")
+    created_at: datetime = Field(..., description="생성 시간")
+    updated_at: datetime = Field(..., description="수정 시간")
+
+
 # 고객 데이터 관련 모델들
 class CustomerCreateRequest(BaseModel):
+    user_id: Optional[int] = Field(None, description="설계사 ID")
     name: Optional[str] = Field(None, description="고객 이름")
     contact: Optional[str] = Field(None, description="연락처")
     affiliation: Optional[str] = Field(None, description="소속")
@@ -76,10 +100,26 @@ class CustomerCreateRequest(BaseModel):
     interests: Optional[List[str]] = Field(default=[], description="관심사")
     life_events: Optional[List[Dict[str, Any]]] = Field(default=[], description="인생 이벤트")
     insurance_products: Optional[List[Dict[str, Any]]] = Field(default=[], description="보험 상품 정보")
+    
+    # 새로 추가된 필드들
+    customer_type: Optional[str] = Field(None, description="고객 유형: 가입, 미가입")
+    contact_channel: Optional[str] = Field(None, description="고객 접점: 가족, 지역, 소개, 지역마케팅, 인바운드, 제휴db, 단체계약, 방카, 개척, 기타")
+    phone: Optional[str] = Field(None, description="전화번호 (000-0000-0000 포맷)")
+    resident_number: Optional[str] = Field(None, description="주민번호 (999999-1****** 포맷)")
+    address: Optional[str] = Field(None, description="주소")
+    job_title: Optional[str] = Field(None, description="직업")
+    bank_name: Optional[str] = Field(None, description="계좌은행")
+    account_number: Optional[str] = Field(None, description="계좌번호")
+    referrer: Optional[str] = Field(None, description="소개자")
+    notes: Optional[str] = Field(None, description="기타")
+    
+    # 가입상품 리스트
+    products: Optional[List[CustomerProductCreate]] = Field(default=[], description="가입상품 리스트")
 
 
 class CustomerResponse(BaseModel):
     customer_id: str = Field(..., description="고객 ID")
+    user_id: Optional[int] = Field(None, description="설계사 ID")
     name: Optional[str] = Field(None, description="고객 이름")
     contact: Optional[str] = Field(None, description="연락처")
     affiliation: Optional[str] = Field(None, description="소속")
@@ -89,6 +129,22 @@ class CustomerResponse(BaseModel):
     interests: Optional[List[str]] = Field(default=[], description="관심사")
     life_events: Optional[List[Dict[str, Any]]] = Field(default=[], description="인생 이벤트")
     insurance_products: Optional[List[Dict[str, Any]]] = Field(default=[], description="보험 상품 정보")
+    
+    # 새로 추가된 필드들
+    customer_type: Optional[str] = Field(None, description="고객 유형: 가입, 미가입")
+    contact_channel: Optional[str] = Field(None, description="고객 접점: 가족, 지역, 소개, 지역마케팅, 인바운드, 제휴db, 단체계약, 방카, 개척, 기타")
+    phone: Optional[str] = Field(None, description="전화번호 (000-0000-0000 포맷)")
+    resident_number: Optional[str] = Field(None, description="주민번호 (999999-1****** 포맷)")
+    address: Optional[str] = Field(None, description="주소")
+    job_title: Optional[str] = Field(None, description="직업")
+    bank_name: Optional[str] = Field(None, description="계좌은행")
+    account_number: Optional[str] = Field(None, description="계좌번호")
+    referrer: Optional[str] = Field(None, description="소개자")
+    notes: Optional[str] = Field(None, description="기타")
+    
+    # 가입상품 리스트
+    products: Optional[List[CustomerProductResponse]] = Field(default=[], description="가입상품 리스트")
+    
     created_at: datetime = Field(..., description="생성 시간")
     updated_at: datetime = Field(..., description="수정 시간")
 
@@ -105,6 +161,11 @@ class CustomerUpdateRequest(BaseModel):
     insurance_products: Optional[List[Dict[str, Any]]] = Field(None, description="보험 상품 정보")
 
 
+class ExcelUploadRequest(BaseModel):
+    user_id: int = Field(..., description="설계사 ID")
+    file: UploadFile = Field(..., description="업로드할 엑셀 파일")
+
+
 class ExcelUploadResponse(BaseModel):
     success: bool = Field(..., description="업로드 성공 여부")
     processed_rows: int = Field(..., description="처리된 행 수")
@@ -112,6 +173,18 @@ class ExcelUploadResponse(BaseModel):
     updated_customers: int = Field(..., description="업데이트된 고객 수")
     errors: List[str] = Field(default=[], description="처리 중 발생한 오류들")
     column_mapping: Dict[str, str] = Field(..., description="LLM이 매핑한 컬럼 정보")
+    
+    # 가입상품 처리 통계
+    total_products: int = Field(default=0, description="총 상품 수")
+    created_products: int = Field(default=0, description="생성된 상품 수")
+    failed_products: int = Field(default=0, description="처리 실패한 상품 수")
+    
+    # 필드별 매핑 성공률
+    mapping_success_rate: Dict[str, float] = Field(default={}, description="필드별 매핑 성공률 (0-1)")
+    
+    # 처리 시간 정보
+    processing_time_seconds: Optional[float] = Field(None, description="처리 시간 (초)")
+    processed_at: datetime = Field(default_factory=datetime.now, description="처리 완료 시간")
 
 
 class ColumnMappingRequest(BaseModel):

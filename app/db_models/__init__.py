@@ -2,7 +2,7 @@
 
 # Import main database models from main_models.py
 from .main_models import (
-    CustomerMemo, Customer, Event, AnalysisResult
+    User, CustomerMemo, Customer, CustomerProduct, Event, AnalysisResult
 )
 
 # Import prompt management models

@@ -1,10 +1,34 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, UUID, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, UUID, ForeignKey, Boolean, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from app.database import Base
+
+
+class User(Base):
+    """사용자(설계사) 테이블 - 기존 users 테이블 스키마"""
+    __tablename__ = "users"
+    
+    id = Column(BigInteger, primary_key=True, comment="사용자 ID")
+    name = Column(String(30), nullable=False, comment="사용자 이름")
+    email = Column(String(60), nullable=False, comment="이메일")
+    encrypted_password = Column(String(256), nullable=False, comment="암호화된 비밀번호")
+    phone = Column(String(30), nullable=False, comment="전화번호")
+    sign_up_token = Column(String(50), nullable=True, comment="가입 토큰")
+    reset_password_token = Column(String(256), nullable=True, comment="비밀번호 재설정 토큰")
+    agreed_marketing_opt_in = Column(Boolean, default=False, comment="마케팅 수신 동의")
+    sign_up_status = Column(String(20), default="IN_PROGRESS", comment="가입 상태")
+    created_at = Column(DateTime(timezone=True), nullable=True, comment="생성 시간")
+    updated_at = Column(DateTime(timezone=True), nullable=True, comment="수정 시간")
+    deleted_at = Column(DateTime(timezone=True), nullable=True, comment="삭제 시간")
+    
+    # 관계 설정
+    customers = relationship("Customer", back_populates="user")
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, name={self.name}, email={self.email})>"
 
 
 class CustomerMemo(Base):
@@ -34,6 +58,7 @@ class Customer(Base):
     __tablename__ = "customers"
     
     customer_id = Column(UUID(), primary_key=True, default=uuid.uuid4, comment="고객 ID")
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True, comment="설계사 ID")
     name = Column(String(100), nullable=True, comment="고객 이름")
     contact = Column(String(50), nullable=True, comment="연락처")
     affiliation = Column(String(200), nullable=True, comment="소속")
@@ -43,15 +68,52 @@ class Customer(Base):
     interests = Column(JSONB, nullable=True, comment="관심사")
     life_events = Column(JSONB, nullable=True, comment="인생 이벤트")
     insurance_products = Column(JSONB, nullable=True, comment="보험 상품 정보")
+    
+    # 새로 추가된 필드들
+    customer_type = Column(String(10), nullable=True, comment="고객 유형: 가입, 미가입")
+    contact_channel = Column(String(20), nullable=True, comment="고객 접점: 가족, 지역, 소개, 지역마케팅, 인바운드, 제휴db, 단체계약, 방카, 개척, 기타")
+    phone = Column(String(20), nullable=True, comment="전화번호 (000-0000-0000 포맷)")
+    resident_number = Column(String(20), nullable=True, comment="주민번호 (999999-1****** 포맷)")
+    address = Column(String(500), nullable=True, comment="주소")
+    job_title = Column(String(100), nullable=True, comment="직업")
+    bank_name = Column(String(100), nullable=True, comment="계좌은행")
+    account_number = Column(String(50), nullable=True, comment="계좌번호")
+    referrer = Column(String(100), nullable=True, comment="소개자")
+    notes = Column(Text, nullable=True, comment="기타")
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="생성 시간")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="수정 시간")
     
     # 관계 설정
+    user = relationship("User", back_populates="customers")
+    products = relationship("CustomerProduct", back_populates="customer", cascade="all, delete-orphan")
     memos = relationship("CustomerMemo", back_populates="customer", cascade="all, delete-orphan")
     events = relationship("Event", back_populates="customer", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Customer(customer_id={self.customer_id}, name={self.name}, created_at={self.created_at})>"
+
+
+class CustomerProduct(Base):
+    """고객 가입상품 테이블 - 고객의 보험상품 가입 정보"""
+    __tablename__ = "customer_products"
+    
+    product_id = Column(UUID(), primary_key=True, default=uuid.uuid4, comment="상품 ID")
+    customer_id = Column(UUID(), ForeignKey("customers.customer_id"), nullable=False, comment="고객 ID")
+    product_name = Column(String(200), nullable=True, comment="가입상품명")
+    coverage_amount = Column(String(50), nullable=True, comment="가입금액")
+    subscription_date = Column(DateTime, nullable=True, comment="가입일자")
+    expiry_renewal_date = Column(DateTime, nullable=True, comment="종료일/갱신일")
+    auto_transfer_date = Column(String(10), nullable=True, comment="자동이체일 (일자)")
+    policy_issued = Column(Boolean, default=False, comment="증권교부여부")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="생성 시간")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="수정 시간")
+    
+    # 관계 설정
+    customer = relationship("Customer", back_populates="products")
+    
+    def __repr__(self):
+        return f"<CustomerProduct(product_id={self.product_id}, customer_id={self.customer_id}, product_name={self.product_name})>"
 
 
 class Event(Base):

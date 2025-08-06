@@ -4,9 +4,10 @@ import pandas as pd
 import openai
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
-from app.db_models import Customer
+from sqlalchemy import select, and_, or_, func
+from app.db_models import Customer, CustomerProduct, User
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
+from app.models.main_models import CustomerProductCreate, CustomerProductResponse
 from app.utils.langsmith_config import langsmith_manager, trace_llm_call
 from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_column_mapping_prompt, prompt_loader
@@ -16,6 +17,7 @@ import json
 import re
 import logging
 import time
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ class CustomerService:
             logger.warning(f"⚠️  CustomerService Fallback 클라이언트 초기화 실패: {e}")
             self.client = None
         
-        # 표준 고객 스키마 정의
+        # 확장된 표준 고객 스키마 정의
         self.standard_schema = {
             "name": "고객 이름",
             "contact": "연락처 (전화번호, 이메일 등)",
@@ -61,17 +63,151 @@ class CustomerService:
             "date_of_birth": "생년월일",
             "interests": "관심사 (리스트)",
             "life_events": "인생 이벤트 (결혼, 출산 등)",
-            "insurance_products": "보험 상품 정보"
+            "insurance_products": "보험 상품 정보",
+            
+            # 새로 추가된 필드들
+            "customer_type": "고객 유형 (가입, 미가입)",
+            "contact_channel": "고객 접점 (가족, 지역, 소개 등)",
+            "phone": "전화번호",
+            "resident_number": "주민번호",
+            "address": "주소",
+            "job_title": "직업",
+            "bank_name": "계좌은행",
+            "account_number": "계좌번호",
+            "referrer": "소개자",
+            "notes": "기타",
+            
+            # 가입상품 관련 필드들
+            "product_name": "가입상품명",
+            "coverage_amount": "가입금액",
+            "subscription_date": "가입일자",
+            "expiry_renewal_date": "종료일/갱신일",
+            "auto_transfer_date": "자동이체일",
+            "policy_issued": "증권교부여부"
         }
         
         # 동적 프롬프트 로딩을 위한 설정
         self.use_dynamic_prompts = True
 
+    def validate_phone_format(self, phone: str) -> str:
+        """전화번호를 000-0000-0000 형식으로 변환합니다."""
+        if not phone or not isinstance(phone, str):
+            return phone
+        
+        # 숫자만 추출
+        digits = re.sub(r'\D', '', phone)
+        
+        # 휴대폰 번호 (11자리)
+        if len(digits) == 11:
+            return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+        # 일반 전화번호 (10자리)
+        elif len(digits) == 10:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+        # 서울 번호 (9자리)
+        elif len(digits) == 9:
+            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
+        
+        return phone  # 형식에 맞지 않으면 원본 반환
+
+    def mask_resident_number(self, resident_number: str) -> str:
+        """주민번호를 999999-1****** 형식으로 마스킹합니다."""
+        if not resident_number or not isinstance(resident_number, str):
+            return resident_number
+        
+        # 숫자만 추출
+        digits = re.sub(r'\D', '', resident_number)
+        
+        if len(digits) == 13:
+            return f"{digits[:6]}-{digits[6]}{'*' * 6}"
+        
+        return resident_number  # 형식에 맞지 않으면 원본 반환
+
+    def parse_date_formats(self, date_str: str) -> Optional[date]:
+        """다양한 날짜 형식을 파싱합니다."""
+        if not date_str or not isinstance(date_str, str):
+            return None
+        
+        date_str = date_str.strip()
+        if not date_str:
+            return None
+        
+        # 시도할 날짜 형식들
+        formats = [
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+            "%Y.%m.%d",
+            "%Y년 %m월 %d일",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y/%m/%d %H:%M:%S"
+        ]
+        
+        for fmt in formats:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                return parsed_date.date()
+            except ValueError:
+                continue
+        
+        logger.warning(f"날짜 파싱 실패: {date_str}")
+        return None
+
+    def validate_policy_issued(self, value: str) -> bool:
+        """증권교부여부를 불린으로 변환합니다."""
+        if not value or not isinstance(value, str):
+            return False
+        
+        value = value.strip().lower()
+        true_values = ['y', 'yes', '예', '발급', '완료', 'true', '1', 'o', 'ok']
+        return value in true_values
+
+    def extract_product_fields(self, row_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """행 데이터에서 가입상품 정보를 추출합니다."""
+        products = []
+        
+        # 단일 상품 정보 추출
+        product_data = {}
+        for field in ['product_name', 'coverage_amount', 'subscription_date', 'expiry_renewal_date', 'auto_transfer_date', 'policy_issued']:
+            if field in row_data and row_data[field]:
+                product_data[field] = row_data[field]
+        
+        if product_data.get('product_name'):
+            products.append(product_data)
+        
+        # 여러 상품이 있는 경우 처리 (product_name_1, product_name_2 등)
+        i = 1
+        while True:
+            product_data = {}
+            has_data = False
+            
+            for field in ['product_name', 'coverage_amount', 'subscription_date', 'expiry_renewal_date', 'auto_transfer_date', 'policy_issued']:
+                field_with_suffix = f"{field}_{i}"
+                if field_with_suffix in row_data and row_data[field_with_suffix]:
+                    product_data[field] = row_data[field_with_suffix]
+                    has_data = True
+            
+            if not has_data or not product_data.get('product_name'):
+                break
+                
+            products.append(product_data)
+            i += 1
+        
+        return products
+
     async def create_customer(self, customer_data: CustomerCreateRequest, db_session: AsyncSession) -> Customer:
         """
-        새 고객을 생성합니다.
+        새 고객을 생성합니다 (확장된 필드 및 가입상품 지원).
         """
         try:
+            # 설계사 ID 검증
+            if customer_data.user_id:
+                user_stmt = select(User).where(User.id == customer_data.user_id)
+                user_result = await db_session.execute(user_stmt)
+                user = user_result.scalar_one_or_none()
+                if not user:
+                    raise Exception(f"설계사 ID {customer_data.user_id}를 찾을 수 없습니다.")
+
             # 생년월일 처리
             date_of_birth_dt = None
             if customer_data.date_of_birth:
@@ -84,9 +220,14 @@ class CustomerService:
                     except ValueError:
                         pass
 
-            # Customer 객체 생성
+            # 데이터 검증 적용
+            phone = self.validate_phone_format(customer_data.phone) if customer_data.phone else None
+            resident_number = self.mask_resident_number(customer_data.resident_number) if customer_data.resident_number else None
+
+            # Customer 객체 생성 (모든 새로운 필드 포함)
             customer = Customer(
                 customer_id=uuid.uuid4(),
+                user_id=customer_data.user_id,
                 name=customer_data.name,
                 contact=customer_data.contact,
                 affiliation=customer_data.affiliation,
@@ -95,10 +236,58 @@ class CustomerService:
                 date_of_birth=date_of_birth_dt,
                 interests=customer_data.interests or [],
                 life_events=customer_data.life_events or [],
-                insurance_products=customer_data.insurance_products or []
+                insurance_products=customer_data.insurance_products or [],
+                
+                # 새로 추가된 필드들
+                customer_type=customer_data.customer_type,
+                contact_channel=customer_data.contact_channel,
+                phone=phone,
+                resident_number=resident_number,
+                address=customer_data.address,
+                job_title=customer_data.job_title,
+                bank_name=customer_data.bank_name,
+                account_number=customer_data.account_number,
+                referrer=customer_data.referrer,
+                notes=customer_data.notes
             )
 
             db_session.add(customer)
+            await db_session.flush()  # 고객 ID 생성을 위해 flush
+
+            # 가입상품 생성
+            if customer_data.products:
+                for product_data in customer_data.products:
+                    try:
+                        # 상품 데이터 검증
+                        subscription_date = None
+                        expiry_renewal_date = None
+                        
+                        if product_data.subscription_date:
+                            if isinstance(product_data.subscription_date, date):
+                                subscription_date = datetime.combine(product_data.subscription_date, datetime.min.time())
+                        
+                        if product_data.expiry_renewal_date:
+                            if isinstance(product_data.expiry_renewal_date, date):
+                                expiry_renewal_date = datetime.combine(product_data.expiry_renewal_date, datetime.min.time())
+                        
+                        # CustomerProduct 객체 생성
+                        product = CustomerProduct(
+                            product_id=uuid.uuid4(),
+                            customer_id=customer.customer_id,
+                            product_name=product_data.product_name,
+                            coverage_amount=product_data.coverage_amount,
+                            subscription_date=subscription_date,
+                            expiry_renewal_date=expiry_renewal_date,
+                            auto_transfer_date=product_data.auto_transfer_date,
+                            policy_issued=product_data.policy_issued or False
+                        )
+                        
+                        db_session.add(product)
+                        
+                    except Exception as product_error:
+                        logger.warning(f"상품 생성 중 오류 (고객 {customer.customer_id}): {str(product_error)}")
+                        # 상품 생성 실패해도 고객 생성은 계속 진행
+
             await db_session.commit()
             await db_session.refresh(customer)
 
@@ -278,107 +467,365 @@ JSON 형식으로 응답해주세요:
         except Exception as e:
             raise Exception(f"컬럼 매핑 중 오류가 발생했습니다: {str(e)}")
 
-    async def process_excel_data(self, df: pd.DataFrame, column_mapping: Dict[str, str], db_session: AsyncSession) -> Dict[str, Any]:
+    async def process_excel_data(self, df: pd.DataFrame, column_mapping: Dict[str, str], user_id: int, db_session: AsyncSession) -> Dict[str, Any]:
         """
         엑셀 데이터를 처리하여 고객 데이터를 생성/업데이트합니다.
+        확장된 기능: 설계사별 처리, 가입상품 처리, 데이터 검증, 트랜잭션 처리
         """
+        start_time = time.time()
+        
+        # 통계 변수들
+        processed_rows = 0
+        created_customers = 0
+        updated_customers = 0
+        total_products = 0
+        created_products = 0
+        failed_products = 0
+        errors = []
+        
+        # 필드별 매핑 성공률 추적
+        mapping_success_rate = {}
+        field_attempts = defaultdict(int)
+        field_successes = defaultdict(int)
+        
+        # 고객별 데이터 그룹화 (여러 행에 걸친 동일 고객 처리)
+        customer_groups = defaultdict(list)
+        
         try:
-            processed_rows = 0
-            created_customers = 0
-            updated_customers = 0
-            errors = []
-
+            # 설계사 존재 확인
+            user_stmt = select(User).where(User.id == user_id)
+            user_result = await db_session.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            if not user:
+                raise Exception(f"설계사 ID {user_id}를 찾을 수 없습니다.")
+            
+            logger.info(f"엑셀 데이터 처리 시작: 설계사 {user_id}, 총 {len(df)} 행")
+            
+            # 1단계: 데이터 추출 및 그룹화
             for index, row in df.iterrows():
                 try:
                     # 매핑된 데이터 추출
-                    customer_data = {}
+                    row_data = self._extract_row_data(row, column_mapping, df.columns, index, field_attempts, field_successes)
                     
-                    for excel_col, standard_field in column_mapping.items():
-                        if standard_field != "unmapped" and excel_col in df.columns:
-                            value = row[excel_col]
-                            
-                            # 빈 값 처리
-                            if pd.isna(value) or value == "":
-                                continue
-                            
-                            # 데이터 타입별 처리
-                            if standard_field == "date_of_birth":
-                                try:
-                                    # 다양한 날짜 형식 처리
-                                    if isinstance(value, str):
-                                        # 일반적인 날짜 형식들 시도
-                                        for fmt in ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y"]:
-                                            try:
-                                                parsed_date = datetime.strptime(value.strip(), fmt)
-                                                customer_data[standard_field] = parsed_date.date()
-                                                break
-                                            except ValueError:
-                                                continue
-                                    elif isinstance(value, datetime):
-                                        customer_data[standard_field] = value.date()
-                                except:
-                                    pass  # 날짜 파싱 실패 시 무시
-                            
-                            elif standard_field in ["interests", "life_events", "insurance_products"]:
-                                # 리스트나 JSON 데이터 처리
-                                if isinstance(value, str):
-                                    try:
-                                        # JSON 형태인지 확인
-                                        if value.startswith('[') or value.startswith('{'):
-                                            customer_data[standard_field] = json.loads(value)
-                                        else:
-                                            # 쉼표로 구분된 문자열을 리스트로 변환
-                                            customer_data[standard_field] = [item.strip() for item in value.split(',') if item.strip()]
-                                    except:
-                                        customer_data[standard_field] = [str(value)]
-                                else:
-                                    customer_data[standard_field] = [str(value)]
-                            
-                            else:
-                                # 문자열 필드들
-                                customer_data[standard_field] = str(value).strip()
-
-                    # 고객 데이터가 있는 경우에만 처리
-                    if customer_data:
-                        # 기존 고객 확인 (이름과 연락처로)
-                        existing_customer = None
-                        if customer_data.get("name") and customer_data.get("contact"):
-                            stmt = select(Customer).where(
-                                and_(
-                                    Customer.name == customer_data["name"],
-                                    Customer.contact == customer_data["contact"]
-                                )
-                            )
-                            result = await db_session.execute(stmt)
-                            existing_customer = result.scalar_one_or_none()
-
+                    if not row_data:
+                        continue
+                        
+                    # 고객 식별자 생성 (이름 + 전화번호 또는 주민번호)
+                    customer_key = self._generate_customer_key(row_data)
+                    if customer_key:
+                        customer_groups[customer_key].append((index, row_data))
+                    
+                    processed_rows += 1
+                    
+                except Exception as e:
+                    errors.append(f"행 {index + 2} 데이터 추출 오류: {str(e)}")
+                    continue
+            
+            logger.info(f"데이터 추출 완료: {len(customer_groups)} 고객 그룹")
+            
+            # 2단계: 트랜잭션 내에서 고객 및 상품 처리
+            async with db_session.begin():
+                for customer_key, row_data_list in customer_groups.items():
+                    try:
+                        # 고객 데이터 통합
+                        merged_customer_data, products_data = self._merge_customer_data(row_data_list, user_id)
+                        
+                        # 기존 고객 확인 (중복 체크)
+                        existing_customer = await self._find_existing_customer(merged_customer_data, user_id, db_session)
+                        
                         if existing_customer:
                             # 기존 고객 업데이트
-                            update_request = CustomerUpdateRequest(**customer_data)
-                            await self.update_customer(str(existing_customer.customer_id), update_request, db_session)
+                            await self._update_existing_customer(existing_customer, merged_customer_data, db_session)
+                            customer = existing_customer
                             updated_customers += 1
                         else:
                             # 새 고객 생성
-                            create_request = CustomerCreateRequest(**customer_data)
-                            await self.create_customer(create_request, db_session)
+                            customer = await self._create_new_customer(merged_customer_data, db_session)
                             created_customers += 1
-
-                    processed_rows += 1
-
-                except Exception as e:
-                    errors.append(f"행 {index + 2}: {str(e)}")
-
+                        
+                        # 가입상품 처리
+                        product_results = await self._process_customer_products(
+                            customer, products_data, db_session
+                        )
+                        total_products += product_results['total']
+                        created_products += product_results['created']
+                        failed_products += product_results['failed']
+                        
+                        if product_results['errors']:
+                            errors.extend(product_results['errors'])
+                            
+                    except Exception as e:
+                        errors.append(f"고객 {customer_key} 처리 오류: {str(e)}")
+                        await db_session.rollback()
+                        continue
+            
+            # 처리 시간 계산
+            processing_time = time.time() - start_time
+            
+            # 필드별 매핑 성공률 계산
+            for field in field_attempts:
+                if field_attempts[field] > 0:
+                    mapping_success_rate[field] = field_successes[field] / field_attempts[field]
+            
+            logger.info(f"엑셀 데이터 처리 완료: {created_customers}명 생성, {updated_customers}명 업데이트, {created_products}개 상품 생성")
+            
             return {
                 "success": True,
                 "processed_rows": processed_rows,
                 "created_customers": created_customers,
                 "updated_customers": updated_customers,
-                "errors": errors
+                "errors": errors,
+                "total_products": total_products,
+                "created_products": created_products,
+                "failed_products": failed_products,
+                "mapping_success_rate": mapping_success_rate,
+                "processing_time_seconds": round(processing_time, 2),
+                "processed_at": datetime.now()
             }
 
         except Exception as e:
             await db_session.rollback()
+            logger.error(f"엑셀 데이터 처리 중 심각한 오류: {str(e)}")
             raise Exception(f"엑셀 데이터 처리 중 오류가 발생했습니다: {str(e)}")
+    
+    def _extract_row_data(self, row, column_mapping: Dict[str, str], df_columns, index: int, 
+                         field_attempts: defaultdict, field_successes: defaultdict) -> Dict[str, Any]:
+        """행에서 데이터를 추출하고 검증합니다."""
+        row_data = {}
+        
+        for excel_col, standard_field in column_mapping.items():
+            if standard_field == "unmapped" or excel_col not in df_columns:
+                continue
+            
+            value = row[excel_col]
+            field_attempts[standard_field] += 1
+            
+            # 빈 값 처리
+            if pd.isna(value) or value == "":
+                continue
+            
+            try:
+                # 데이터 타입별 처리 및 검증
+                processed_value = self._process_field_value(standard_field, value)
+                if processed_value is not None:
+                    row_data[standard_field] = processed_value
+                    field_successes[standard_field] += 1
+                    
+            except Exception as e:
+                logger.warning(f"행 {index + 2}, 필드 {standard_field} 처리 실패: {str(e)}")
+        
+        return row_data
+    
+    def _process_field_value(self, field_name: str, value: Any) -> Any:
+        """필드별 데이터 처리 및 검증"""
+        if pd.isna(value) or value == "":
+            return None
+            
+        str_value = str(value).strip()
+        
+        # 전화번호 처리
+        if field_name == "phone":
+            return self.validate_phone_format(str_value)
+        
+        # 주민번호 처리
+        elif field_name == "resident_number":
+            return self.mask_resident_number(str_value)
+        
+        # 날짜 필드 처리
+        elif field_name in ["date_of_birth", "subscription_date", "expiry_renewal_date"]:
+            return self.parse_date_formats(str_value)
+        
+        # 불린 필드 처리
+        elif field_name == "policy_issued":
+            return self.validate_policy_issued(str_value)
+        
+        # 리스트 필드 처리
+        elif field_name in ["interests", "life_events", "insurance_products"]:
+            if str_value.startswith('[') or str_value.startswith('{'):
+                try:
+                    return json.loads(str_value)
+                except:
+                    pass
+            return [item.strip() for item in str_value.split(',') if item.strip()]
+        
+        # 기본 문자열 처리
+        else:
+            return str_value
+    
+    def _generate_customer_key(self, row_data: Dict[str, Any]) -> Optional[str]:
+        """고객 식별을 위한 키 생성"""
+        name = row_data.get('name', '').strip()
+        phone = row_data.get('phone', '').strip()
+        resident_number = row_data.get('resident_number', '').strip()
+        
+        if name and (phone or resident_number):
+            return f"{name}_{phone or resident_number}"
+        
+        return None
+    
+    def _merge_customer_data(self, row_data_list: List[Tuple[int, Dict[str, Any]]], user_id: int) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """여러 행의 고객 데이터를 통합하고 상품 데이터를 분리합니다."""
+        customer_data = {"user_id": user_id}
+        products_data = []
+        
+        # 고객 필드들
+        customer_fields = {'name', 'contact', 'affiliation', 'occupation', 'gender', 'date_of_birth',
+                          'interests', 'life_events', 'insurance_products', 'customer_type', 
+                          'contact_channel', 'phone', 'resident_number', 'address', 'job_title',
+                          'bank_name', 'account_number', 'referrer', 'notes'}
+        
+        # 상품 필드들
+        product_fields = {'product_name', 'coverage_amount', 'subscription_date', 
+                         'expiry_renewal_date', 'auto_transfer_date', 'policy_issued'}
+        
+        for index, row_data in row_data_list:
+            # 고객 데이터 통합 (첫 번째로 발견된 값 우선)
+            for field in customer_fields:
+                if field in row_data and field not in customer_data:
+                    customer_data[field] = row_data[field]
+            
+            # 상품 데이터 추출
+            product_data = {}
+            for field in product_fields:
+                if field in row_data and row_data[field]:
+                    product_data[field] = row_data[field]
+            
+            # 상품명이 있는 경우만 상품으로 처리
+            if product_data.get('product_name'):
+                product_data['source_row'] = index + 2  # 엑셀 행 번호
+                products_data.append(product_data)
+        
+        return customer_data, products_data
+    
+    async def _find_existing_customer(self, customer_data: Dict[str, Any], user_id: int, db_session: AsyncSession) -> Optional[Customer]:
+        """기존 고객 찾기 (중복 체크)"""
+        conditions = []
+        
+        # 이름과 전화번호로 찾기
+        if customer_data.get('name') and customer_data.get('phone'):
+            conditions.append(
+                and_(
+                    Customer.user_id == user_id,
+                    Customer.name == customer_data['name'],
+                    Customer.phone == customer_data['phone']
+                )
+            )
+        
+        # 이름과 주민번호로 찾기  
+        if customer_data.get('name') and customer_data.get('resident_number'):
+            conditions.append(
+                and_(
+                    Customer.user_id == user_id,
+                    Customer.name == customer_data['name'],
+                    Customer.resident_number == customer_data['resident_number']
+                )
+            )
+        
+        if not conditions:
+            return None
+        
+        stmt = select(Customer).where(or_(*conditions))
+        result = await db_session.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def _update_existing_customer(self, customer: Customer, customer_data: Dict[str, Any], db_session: AsyncSession):
+        """기존 고객 정보 업데이트"""
+        for field, value in customer_data.items():
+            if field != 'user_id' and hasattr(customer, field):
+                setattr(customer, field, value)
+        
+        customer.updated_at = datetime.now()
+        await db_session.flush()
+    
+    async def _create_new_customer(self, customer_data: Dict[str, Any], db_session: AsyncSession) -> Customer:
+        """새 고객 생성"""
+        # 날짜 형식 변환
+        if customer_data.get('date_of_birth') and isinstance(customer_data['date_of_birth'], date):
+            customer_data['date_of_birth'] = datetime.combine(customer_data['date_of_birth'], datetime.min.time())
+        
+        customer = Customer(
+            customer_id=uuid.uuid4(),
+            **customer_data
+        )
+        
+        db_session.add(customer)
+        await db_session.flush()
+        return customer
+    
+    async def _process_customer_products(self, customer: Customer, products_data: List[Dict[str, Any]], 
+                                       db_session: AsyncSession) -> Dict[str, Any]:
+        """고객의 가입상품들을 처리합니다."""
+        results = {
+            'total': len(products_data),
+            'created': 0,
+            'failed': 0,
+            'errors': []
+        }
+        
+        for product_data in products_data:
+            try:
+                # 중복 상품 체크
+                if await self._is_duplicate_product(customer, product_data, db_session):
+                    continue
+                
+                # 상품 데이터 정제
+                clean_product_data = self._clean_product_data(product_data)
+                
+                # 새 상품 생성
+                product = CustomerProduct(
+                    product_id=uuid.uuid4(),
+                    customer_id=customer.customer_id,
+                    **clean_product_data
+                )
+                
+                db_session.add(product)
+                results['created'] += 1
+                
+            except Exception as e:
+                results['failed'] += 1
+                results['errors'].append(f"행 {product_data.get('source_row', '?')} 상품 처리 오류: {str(e)}")
+        
+        await db_session.flush()
+        return results
+    
+    async def _is_duplicate_product(self, customer: Customer, product_data: Dict[str, Any], 
+                                  db_session: AsyncSession) -> bool:
+        """상품 중복 체크"""
+        if not product_data.get('product_name'):
+            return False
+        
+        stmt = select(CustomerProduct).where(
+            and_(
+                CustomerProduct.customer_id == customer.customer_id,
+                CustomerProduct.product_name == product_data['product_name']
+            )
+        )
+        
+        # 가입일이 있는 경우 추가 조건
+        if product_data.get('subscription_date'):
+            stmt = stmt.where(CustomerProduct.subscription_date == product_data['subscription_date'])
+        
+        result = await db_session.execute(stmt)
+        existing_product = result.scalar_one_or_none()
+        
+        return existing_product is not None
+    
+    def _clean_product_data(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """상품 데이터 정제"""
+        clean_data = {}
+        
+        for field, value in product_data.items():
+            if field == 'source_row':
+                continue
+                
+            if field in ['subscription_date', 'expiry_renewal_date'] and isinstance(value, date):
+                clean_data[field] = datetime.combine(value, datetime.min.time())
+            elif field == 'policy_issued' and isinstance(value, str):
+                clean_data[field] = self.validate_policy_issued(value)
+            else:
+                clean_data[field] = value
+        
+        return clean_data
 
     async def get_customer_list(self, db_session: AsyncSession, limit: int = 100, offset: int = 0) -> Tuple[List[Customer], int]:
         """
