@@ -72,37 +72,37 @@ tests/
 ### 전체 테스트 실행 (권장)
 ```bash
 # 기본 실행 (localhost:8000)
-python tests/run_all_tests.py
+python tests/excel-upload/run_all_tests.py
 
 # 커스텀 URL로 실행
-python tests/run_all_tests.py --base-url http://your-api-server:8000
+python tests/excel-upload/run_all_tests.py --base-url http://your-api-server:8000
 
 # 특정 사용자 ID로 테스트
-python tests/run_all_tests.py --user-id 3 --user-ids 3 4
+python tests/excel-upload/run_all_tests.py --user-id 3 --user-ids 3 4
 ```
 
 ### 개별 테스트 실행
 ```bash
 # Excel Upload API 테스트만
-python tests/run_all_tests.py --excel-only
+python tests/excel-upload/run_all_tests.py --excel-only
 
 # Customer Products API 테스트만  
-python tests/run_all_tests.py --products-only
+python tests/excel-upload/run_all_tests.py --products-only
 
 # User Permissions 테스트만
-python tests/run_all_tests.py --permissions-only
+python tests/excel-upload/run_all_tests.py --permissions-only
 ```
 
 ### 직접 개별 스크립트 실행
 ```bash
 # Excel Upload 테스트
-python tests/test_enhanced_excel_upload.py --user-id 1
+python tests/excel-upload/test_enhanced_excel_upload.py --user-id 1
 
 # Customer Products 테스트
-python tests/test_customer_products_api.py --user-id 1
+python tests/excel-upload/test_customer_products_api.py --user-id 1
 
 # User Permissions 테스트
-python tests/test_user_permissions.py --user-ids 1 2
+python tests/excel-upload/test_user_permissions.py --user-ids 1 2
 ```
 
 ## 📋 명령줄 옵션
