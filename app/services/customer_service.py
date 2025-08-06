@@ -864,3 +864,575 @@ JSON 형식으로 응답해주세요:
         except Exception as e:
             await db_session.rollback()
             raise Exception(f"고객 삭제 중 오류가 발생했습니다: {str(e)}")
+
+    # ======================================
+    # 가입상품 관련 메서드들
+    # ======================================
+
+    async def create_customer_product(self, customer_id: str, product_data: CustomerProductCreate, db_session: AsyncSession) -> CustomerProduct:
+        """
+        고객의 가입상품을 생성합니다.
+        """
+        try:
+            # 고객 존재 여부 확인
+            customer = await self.get_customer_by_id(customer_id, db_session)
+            if not customer:
+                raise Exception(f"고객 ID {customer_id}를 찾을 수 없습니다.")
+            
+            # 중복 상품 체크
+            if await self._is_duplicate_product(customer, product_data.model_dump(), db_session):
+                raise Exception(f"동일한 상품이 이미 존재합니다: {product_data.product_name}")
+            
+            # 날짜 처리
+            subscription_date = None
+            expiry_renewal_date = None
+            
+            if product_data.subscription_date:
+                subscription_date = datetime.combine(product_data.subscription_date, datetime.min.time())
+            
+            if product_data.expiry_renewal_date:
+                expiry_renewal_date = datetime.combine(product_data.expiry_renewal_date, datetime.min.time())
+            
+            # 새 상품 생성
+            product = CustomerProduct(
+                product_id=uuid.uuid4(),
+                customer_id=customer.customer_id,
+                product_name=product_data.product_name,
+                coverage_amount=product_data.coverage_amount,
+                subscription_date=subscription_date,
+                expiry_renewal_date=expiry_renewal_date,
+                auto_transfer_date=product_data.auto_transfer_date,
+                policy_issued=product_data.policy_issued or False
+            )
+            
+            db_session.add(product)
+            await db_session.commit()
+            await db_session.refresh(product)
+            
+            return product
+            
+        except Exception as e:
+            await db_session.rollback()
+            raise Exception(f"가입상품 생성 중 오류가 발생했습니다: {str(e)}")
+
+    async def get_customer_products(self, customer_id: str, db_session: AsyncSession) -> List[CustomerProduct]:
+        """
+        고객의 모든 가입상품을 조회합니다.
+        """
+        try:
+            # 고객 존재 여부 확인
+            customer = await self.get_customer_by_id(customer_id, db_session)
+            if not customer:
+                raise Exception(f"고객 ID {customer_id}를 찾을 수 없습니다.")
+            
+            stmt = select(CustomerProduct).where(
+                CustomerProduct.customer_id == customer.customer_id
+            ).order_by(CustomerProduct.created_at.desc())
+            
+            result = await db_session.execute(stmt)
+            products = result.scalars().all()
+            
+            return products
+            
+        except Exception as e:
+            raise Exception(f"가입상품 조회 중 오류가 발생했습니다: {str(e)}")
+
+    async def update_customer_product(self, customer_id: str, product_id: str, product_data: CustomerProductCreate, db_session: AsyncSession) -> CustomerProduct:
+        """
+        고객의 가입상품을 수정합니다.
+        """
+        try:
+            # 고객 존재 여부 확인
+            customer = await self.get_customer_by_id(customer_id, db_session)
+            if not customer:
+                raise Exception(f"고객 ID {customer_id}를 찾을 수 없습니다.")
+            
+            # 상품 조회
+            product_uuid = uuid.UUID(product_id)
+            stmt = select(CustomerProduct).where(
+                and_(
+                    CustomerProduct.product_id == product_uuid,
+                    CustomerProduct.customer_id == customer.customer_id
+                )
+            )
+            result = await db_session.execute(stmt)
+            product = result.scalar_one_or_none()
+            
+            if not product:
+                raise Exception(f"상품 ID {product_id}를 찾을 수 없습니다.")
+            
+            # 업데이트할 필드들 처리
+            update_data = product_data.model_dump(exclude_unset=True)
+            
+            for field, value in update_data.items():
+                if field in ['subscription_date', 'expiry_renewal_date'] and value:
+                    if isinstance(value, date):
+                        value = datetime.combine(value, datetime.min.time())
+                
+                setattr(product, field, value)
+            
+            product.updated_at = datetime.now()
+            await db_session.commit()
+            await db_session.refresh(product)
+            
+            return product
+            
+        except Exception as e:
+            await db_session.rollback()
+            raise Exception(f"가입상품 수정 중 오류가 발생했습니다: {str(e)}")
+
+    async def delete_customer_product(self, customer_id: str, product_id: str, db_session: AsyncSession) -> bool:
+        """
+        고객의 가입상품을 삭제합니다.
+        """
+        try:
+            # 고객 존재 여부 확인
+            customer = await self.get_customer_by_id(customer_id, db_session)
+            if not customer:
+                raise Exception(f"고객 ID {customer_id}를 찾을 수 없습니다.")
+            
+            # 상품 조회 및 삭제
+            product_uuid = uuid.UUID(product_id)
+            stmt = select(CustomerProduct).where(
+                and_(
+                    CustomerProduct.product_id == product_uuid,
+                    CustomerProduct.customer_id == customer.customer_id
+                )
+            )
+            result = await db_session.execute(stmt)
+            product = result.scalar_one_or_none()
+            
+            if not product:
+                raise Exception(f"상품 ID {product_id}를 찾을 수 없습니다.")
+            
+            await db_session.delete(product)
+            await db_session.commit()
+            
+            return True
+            
+        except Exception as e:
+            await db_session.rollback()
+            raise Exception(f"가입상품 삭제 중 오류가 발생했습니다: {str(e)}")
+
+    # ======================================
+    # 고객 검색 로직 개선
+    # ======================================
+
+    async def search_customers_advanced(self, 
+                                      query: Optional[str] = None,
+                                      user_id: Optional[int] = None,
+                                      customer_type: Optional[str] = None,
+                                      contact_channel: Optional[str] = None,
+                                      product_name: Optional[str] = None,
+                                      limit: int = 50,
+                                      offset: int = 0,
+                                      db_session: AsyncSession = None) -> Tuple[List[Customer], int]:
+        """
+        고급 고객 검색 (설계사별, 고객유형별, 가입상품별 필터링)
+        """
+        try:
+            base_query = select(Customer)
+            count_query = select(func.count(Customer.customer_id))
+            
+            conditions = []
+            
+            # 설계사별 필터링
+            if user_id:
+                conditions.append(Customer.user_id == user_id)
+            
+            # 고객 유형별 필터링
+            if customer_type:
+                conditions.append(Customer.customer_type == customer_type)
+            
+            # 접점 채널별 필터링
+            if contact_channel:
+                conditions.append(Customer.contact_channel == contact_channel)
+            
+            # 텍스트 검색
+            if query:
+                search_conditions = [
+                    Customer.name.ilike(f"%{query}%"),
+                    Customer.contact.ilike(f"%{query}%"),
+                    Customer.affiliation.ilike(f"%{query}%"),
+                    Customer.occupation.ilike(f"%{query}%"),
+                    Customer.phone.ilike(f"%{query}%"),
+                    Customer.address.ilike(f"%{query}%")
+                ]
+                conditions.append(or_(*search_conditions))
+            
+            # 가입상품별 검색
+            if product_name:
+                # 서브쿼리로 해당 상품을 가진 고객들만 필터링
+                product_subquery = select(CustomerProduct.customer_id).where(
+                    CustomerProduct.product_name.ilike(f"%{product_name}%")
+                )
+                conditions.append(Customer.customer_id.in_(product_subquery))
+            
+            # 조건 적용
+            if conditions:
+                base_query = base_query.where(and_(*conditions))
+                count_query = count_query.where(and_(*conditions))
+            
+            # 전체 개수 조회
+            count_result = await db_session.execute(count_query)
+            total_count = count_result.scalar()
+            
+            # 페이징 및 정렬 적용
+            base_query = base_query.offset(offset).limit(limit).order_by(Customer.updated_at.desc())
+            
+            # 결과 조회
+            result = await db_session.execute(base_query)
+            customers = result.scalars().all()
+            
+            return customers, total_count
+            
+        except Exception as e:
+            raise Exception(f"고급 고객 검색 중 오류가 발생했습니다: {str(e)}")
+
+    # ======================================
+    # 통계 메서드들
+    # ======================================
+
+    async def get_customer_statistics(self, user_id: Optional[int] = None, db_session: AsyncSession = None) -> Dict[str, Any]:
+        """
+        설계사별 고객 현황 통계
+        """
+        try:
+            base_conditions = []
+            if user_id:
+                base_conditions.append(Customer.user_id == user_id)
+            
+            # 전체 고객 수
+            total_query = select(func.count(Customer.customer_id))
+            if base_conditions:
+                total_query = total_query.where(and_(*base_conditions))
+            
+            total_result = await db_session.execute(total_query)
+            total_customers = total_result.scalar()
+            
+            # 고객 유형별 분포
+            type_query = select(
+                Customer.customer_type,
+                func.count(Customer.customer_id).label('count')
+            ).group_by(Customer.customer_type)
+            
+            if base_conditions:
+                type_query = type_query.where(and_(*base_conditions))
+            
+            type_result = await db_session.execute(type_query)
+            customer_types = {row.customer_type or '미분류': row.count for row in type_result}
+            
+            # 접점 채널별 분포
+            channel_query = select(
+                Customer.contact_channel,
+                func.count(Customer.customer_id).label('count')
+            ).group_by(Customer.contact_channel)
+            
+            if base_conditions:
+                channel_query = channel_query.where(and_(*base_conditions))
+            
+            channel_result = await db_session.execute(channel_query)
+            contact_channels = {row.contact_channel or '미분류': row.count for row in channel_result}
+            
+            # 최근 등록된 고객 (30일 이내)
+            recent_date = datetime.now() - pd.Timedelta(days=30)
+            recent_query = select(func.count(Customer.customer_id)).where(
+                Customer.created_at >= recent_date
+            )
+            if base_conditions:
+                recent_query = recent_query.where(and_(*base_conditions))
+            
+            recent_result = await db_session.execute(recent_query)
+            recent_customers = recent_result.scalar()
+            
+            return {
+                "total_customers": total_customers,
+                "customer_types": customer_types,
+                "contact_channels": contact_channels,
+                "recent_customers_30days": recent_customers,
+                "statistics_date": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            raise Exception(f"고객 통계 조회 중 오류가 발생했습니다: {str(e)}")
+
+    async def get_product_statistics(self, user_id: Optional[int] = None, db_session: AsyncSession = None) -> Dict[str, Any]:
+        """
+        가입상품별 통계
+        """
+        try:
+            # 기본 조건 설정
+            base_conditions = []
+            if user_id:
+                # 특정 설계사의 고객들만 필터링
+                user_customers_subquery = select(Customer.customer_id).where(Customer.user_id == user_id)
+                base_conditions.append(CustomerProduct.customer_id.in_(user_customers_subquery))
+            
+            # 전체 가입상품 수
+            total_query = select(func.count(CustomerProduct.product_id))
+            if base_conditions:
+                total_query = total_query.where(and_(*base_conditions))
+            
+            total_result = await db_session.execute(total_query)
+            total_products = total_result.scalar()
+            
+            # 상품별 가입 현황
+            product_query = select(
+                CustomerProduct.product_name,
+                func.count(CustomerProduct.product_id).label('count')
+            ).group_by(CustomerProduct.product_name).order_by(func.count(CustomerProduct.product_id).desc())
+            
+            if base_conditions:
+                product_query = product_query.where(and_(*base_conditions))
+            
+            product_result = await db_session.execute(product_query)
+            product_distribution = {row.product_name or '미분류': row.count for row in product_result}
+            
+            # 증권 발급 현황
+            policy_query = select(
+                CustomerProduct.policy_issued,
+                func.count(CustomerProduct.product_id).label('count')
+            ).group_by(CustomerProduct.policy_issued)
+            
+            if base_conditions:
+                policy_query = policy_query.where(and_(*base_conditions))
+            
+            policy_result = await db_session.execute(policy_query)
+            policy_status = {}
+            for row in policy_result:
+                key = '발급완료' if row.policy_issued else '미발급'
+                policy_status[key] = row.count
+            
+            # 최근 가입 상품 (30일 이내)
+            recent_date = datetime.now() - pd.Timedelta(days=30)
+            recent_query = select(func.count(CustomerProduct.product_id)).where(
+                CustomerProduct.created_at >= recent_date
+            )
+            if base_conditions:
+                recent_query = recent_query.where(and_(*base_conditions))
+            
+            recent_result = await db_session.execute(recent_query)
+            recent_products = recent_result.scalar()
+            
+            # 갱신 예정 상품 (30일 이내)
+            renewal_date = datetime.now() + pd.Timedelta(days=30)
+            renewal_query = select(func.count(CustomerProduct.product_id)).where(
+                and_(
+                    CustomerProduct.expiry_renewal_date.isnot(None),
+                    CustomerProduct.expiry_renewal_date <= renewal_date,
+                    CustomerProduct.expiry_renewal_date >= datetime.now()
+                )
+            )
+            if base_conditions:
+                renewal_query = renewal_query.where(and_(*base_conditions))
+            
+            renewal_result = await db_session.execute(renewal_query)
+            renewal_products = renewal_result.scalar()
+            
+            return {
+                "total_products": total_products,
+                "product_distribution": product_distribution,
+                "policy_status": policy_status,
+                "recent_products_30days": recent_products,
+                "renewal_due_30days": renewal_products,
+                "statistics_date": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            raise Exception(f"상품 통계 조회 중 오류가 발생했습니다: {str(e)}")
+
+    # ======================================
+    # 비즈니스 로직 강화
+    # ======================================
+
+    async def check_duplicate_customer(self, name: str, phone: Optional[str] = None, resident_number: Optional[str] = None, user_id: Optional[int] = None, db_session: AsyncSession = None) -> List[Customer]:
+        """
+        중복 고객 체크
+        """
+        try:
+            conditions = [Customer.name == name]
+            
+            # 설계사 필터링
+            if user_id:
+                conditions.append(Customer.user_id == user_id)
+            
+            # 전화번호 또는 주민번호로 추가 확인
+            identity_conditions = []
+            if phone:
+                identity_conditions.append(Customer.phone == phone)
+            if resident_number:
+                identity_conditions.append(Customer.resident_number == resident_number)
+            
+            if identity_conditions:
+                conditions.append(or_(*identity_conditions))
+            
+            stmt = select(Customer).where(and_(*conditions))
+            result = await db_session.execute(stmt)
+            duplicates = result.scalars().all()
+            
+            return duplicates
+            
+        except Exception as e:
+            raise Exception(f"중복 고객 체크 중 오류가 발생했습니다: {str(e)}")
+
+    async def get_renewal_alerts(self, user_id: Optional[int] = None, days_ahead: int = 30, db_session: AsyncSession = None) -> List[Dict[str, Any]]:
+        """
+        상품 갱신일 알림 조회
+        """
+        try:
+            today = datetime.now().date()
+            alert_date = today + pd.Timedelta(days=days_ahead)
+            
+            # 기본 쿼리
+            query = select(CustomerProduct, Customer).join(
+                Customer, CustomerProduct.customer_id == Customer.customer_id
+            ).where(
+                and_(
+                    CustomerProduct.expiry_renewal_date.isnot(None),
+                    CustomerProduct.expiry_renewal_date >= today,
+                    CustomerProduct.expiry_renewal_date <= alert_date
+                )
+            )
+            
+            # 설계사 필터링
+            if user_id:
+                query = query.where(Customer.user_id == user_id)
+            
+            query = query.order_by(CustomerProduct.expiry_renewal_date.asc())
+            
+            result = await db_session.execute(query)
+            alerts = []
+            
+            for product, customer in result:
+                days_until_renewal = (product.expiry_renewal_date.date() - today).days
+                alerts.append({
+                    "customer_id": str(customer.customer_id),
+                    "customer_name": customer.name,
+                    "customer_phone": customer.phone,
+                    "product_id": str(product.product_id),
+                    "product_name": product.product_name,
+                    "coverage_amount": product.coverage_amount,
+                    "renewal_date": product.expiry_renewal_date.date(),
+                    "days_until_renewal": days_until_renewal,
+                    "priority": "high" if days_until_renewal <= 7 else "medium" if days_until_renewal <= 15 else "low"
+                })
+            
+            return alerts
+            
+        except Exception as e:
+            raise Exception(f"갱신 알림 조회 중 오류가 발생했습니다: {str(e)}")
+
+    async def validate_data_quality(self, user_id: Optional[int] = None, db_session: AsyncSession = None) -> Dict[str, Any]:
+        """
+        데이터 품질 검증
+        """
+        try:
+            base_conditions = []
+            if user_id:
+                base_conditions.append(Customer.user_id == user_id)
+            
+            # 전체 고객 수
+            total_query = select(func.count(Customer.customer_id))
+            if base_conditions:
+                total_query = total_query.where(and_(*base_conditions))
+            
+            total_result = await db_session.execute(total_query)
+            total_customers = total_result.scalar()
+            
+            quality_issues = {
+                "missing_phone": 0,
+                "missing_address": 0,
+                "missing_customer_type": 0,
+                "invalid_phone_format": 0,
+                "missing_products": 0,
+                "total_customers": total_customers
+            }
+            
+            # 필수 정보 누락 체크
+            missing_checks = [
+                ("missing_phone", Customer.phone.is_(None) | (Customer.phone == "")),
+                ("missing_address", Customer.address.is_(None) | (Customer.address == "")),
+                ("missing_customer_type", Customer.customer_type.is_(None) | (Customer.customer_type == ""))
+            ]
+            
+            for issue_key, condition in missing_checks:
+                query = select(func.count(Customer.customer_id)).where(condition)
+                if base_conditions:
+                    query = query.where(and_(*base_conditions))
+                
+                result = await db_session.execute(query)
+                quality_issues[issue_key] = result.scalar()
+            
+            # 전화번호 형식 체크
+            phone_format_query = select(func.count(Customer.customer_id)).where(
+                and_(
+                    Customer.phone.isnot(None),
+                    Customer.phone != "",
+                    ~Customer.phone.regexp_match(r'^\d{3}-\d{4}-\d{4}$|^\d{2,3}-\d{3,4}-\d{4}$')
+                )
+            )
+            if base_conditions:
+                phone_format_query = phone_format_query.where(and_(*base_conditions))
+            
+            phone_format_result = await db_session.execute(phone_format_query)
+            quality_issues["invalid_phone_format"] = phone_format_result.scalar()
+            
+            # 가입상품 없는 고객 수
+            no_products_subquery = select(CustomerProduct.customer_id).distinct()
+            no_products_query = select(func.count(Customer.customer_id)).where(
+                Customer.customer_id.not_in(no_products_subquery)
+            )
+            if base_conditions:
+                no_products_query = no_products_query.where(and_(*base_conditions))
+            
+            no_products_result = await db_session.execute(no_products_query)
+            quality_issues["missing_products"] = no_products_result.scalar()
+            
+            # 품질 점수 계산 (0-100)
+            if total_customers > 0:
+                quality_score = max(0, 100 - sum([
+                    (quality_issues["missing_phone"] / total_customers) * 20,
+                    (quality_issues["missing_address"] / total_customers) * 15,
+                    (quality_issues["missing_customer_type"] / total_customers) * 10,
+                    (quality_issues["invalid_phone_format"] / total_customers) * 15,
+                    (quality_issues["missing_products"] / total_customers) * 40
+                ]))
+            else:
+                quality_score = 100
+            
+            return {
+                "quality_score": round(quality_score, 2),
+                "issues": quality_issues,
+                "recommendations": self._generate_quality_recommendations(quality_issues, total_customers),
+                "check_date": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            raise Exception(f"데이터 품질 검증 중 오류가 발생했습니다: {str(e)}")
+
+    def _generate_quality_recommendations(self, issues: Dict[str, int], total_customers: int) -> List[str]:
+        """데이터 품질 개선 권장사항 생성"""
+        recommendations = []
+        
+        if total_customers == 0:
+            return ["고객 데이터가 없습니다."]
+        
+        if issues["missing_phone"] > total_customers * 0.1:
+            recommendations.append("전화번호가 누락된 고객이 많습니다. 연락처 정보를 보완해주세요.")
+        
+        if issues["missing_address"] > total_customers * 0.2:
+            recommendations.append("주소 정보가 누락된 고객이 많습니다. 주소 정보를 수집해주세요.")
+        
+        if issues["missing_customer_type"] > total_customers * 0.1:
+            recommendations.append("고객 유형이 미분류된 고객이 있습니다. 가입/미가입 상태를 확인해주세요.")
+        
+        if issues["invalid_phone_format"] > 0:
+            recommendations.append("잘못된 전화번호 형식이 발견되었습니다. 000-0000-0000 형식으로 정정해주세요.")
+        
+        if issues["missing_products"] > total_customers * 0.3:
+            recommendations.append("가입상품이 없는 고객이 많습니다. 상품 정보를 추가해주세요.")
+        
+        if not recommendations:
+            recommendations.append("데이터 품질이 양호합니다.")
+        
+        return recommendations
