@@ -292,7 +292,52 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
-            align-items: end;
+            align-items: start;
+        }
+
+        .form-group input, .form-group select {
+            height: 48px; /* 모든 입력 필드 높이 통일 */
+        }
+
+        /* 프롬프트 관리 스타일 */
+        .prompt-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f8f9fa;
+            margin-bottom: 10px;
+        }
+
+        .prompt-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .prompt-item:hover {
+            background-color: #e9ecef;
+        }
+
+        .prompt-item:last-child {
+            border-bottom: none;
+        }
+
+        .prompt-item.selected {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            font-weight: 600;
+        }
+
+        .prompt-item.selected:hover {
+            background-color: #e3f2fd;
+        }
+
+        .prompt-meta {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
         }
 
         .supported-fields {
@@ -373,13 +418,31 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="prompt-name">프롬프트 이름 (선택사항)</label>
+                    <input type="text" id="prompt-name" placeholder="예: 맞춤형 컬럼 매핑 프롬프트">
+                </div>
+
+                <div class="form-group">
                     <label for="custom-prompt">커스텀 컬럼 매핑 프롬프트</label>
                     <textarea id="custom-prompt" placeholder="기본 프롬프트를 사용하거나 커스텀 프롬프트를 입력하세요..."></textarea>
                 </div>
 
                 <div class="form-group">
+                    <button class="btn" onclick="savePrompt()">💾 프롬프트 저장</button>
+                    <button class="btn btn-success" id="update-prompt-btn" onclick="updatePrompt()" style="display: none;">✏️프롬프트 수정</button>
                     <button class="btn btn-secondary" onclick="loadDefaultPrompt()">📋 기본 프롬프트 로드</button>
                     <button class="btn btn-secondary" onclick="clearPrompt()">🔄 초기화</button>
+                </div>
+
+                <div class="form-group">
+                    <label>저장된 프롬프트 목록</label>
+                    <div class="prompt-list" id="prompt-list">
+                        <div class="loading" id="prompt-loading">
+                            <div class="spinner"></div>
+                            로딩 중...
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="loadPrompts()">📂 목록 새로고침</button>
                 </div>
 
                 <div class="supported-fields">
@@ -421,8 +484,8 @@
                 </div>
 
                 <div class="form-group">
-                    <button class="btn btn-success" id="upload-btn" onclick="uploadExcelFile()" disabled>🚀 LLM 정제 실행</button>
-                    <button class="btn btn-warning" onclick="testColumnMapping()" disabled id="mapping-test-btn">🔍 컬럼 매핑 테스트</button>
+                    <button class="btn btn-warning" onclick="testColumnMapping()" disabled id="mapping-test-btn">1. 컬럼 매핑 테스트</button>
+                    <button class="btn btn-success" id="upload-btn" onclick="uploadExcelFile()" disabled>2. LLM 정제 실행</button>
                     <button class="btn btn-secondary" onclick="clearFile()">🗑️ 파일 초기화</button>
                 </div>
 
@@ -452,6 +515,10 @@
     <script>
         let selectedFile = null;
         let uploadProgress = 0;
+        
+        // 프롬프트 관리용 전역 변수
+        let savedPrompts = [];
+        let currentPromptId = null;
 
         // 기본 컬럼 매핑 프롬프트
         const DEFAULT_MAPPING_PROMPT = `당신은 보험설계사의 고객 엑셀 데이터를 분석하는 전문가입니다.
@@ -486,6 +553,7 @@
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
             initializeFileUpload();
+            loadPrompts();
         });
 
         // 파일 업로드 영역 초기화
@@ -571,7 +639,264 @@
         // 프롬프트 초기화
         function clearPrompt() {
             document.getElementById('custom-prompt').value = '';
+            document.getElementById('prompt-name').value = '';
+            currentPromptId = null;
+            updatePromptButtonVisibility();
+            
+            // 선택된 항목 해제
+            const promptItems = document.querySelectorAll('.prompt-item');
+            promptItems.forEach(item => {
+                item.classList.remove('selected');
+            });
+            
             showResult('프롬프트가 초기화되었습니다.', 'success');
+        }
+
+        // 프롬프트 버튼 가시성 업데이트
+        function updatePromptButtonVisibility() {
+            const updateBtn = document.getElementById('update-prompt-btn');
+            if (currentPromptId) {
+                updateBtn.style.display = 'inline-block';
+            } else {
+                updateBtn.style.display = 'none';
+            }
+        }
+
+        // 새 프롬프트 저장
+        function savePrompt() {
+            const name = document.getElementById('prompt-name').value.trim() || '이름없는 프롬프트';
+            const content = document.getElementById('custom-prompt').value.trim();
+
+            if (!content) {
+                showResult('프롬프트 내용을 입력해주세요.', 'error');
+                return;
+            }
+
+            try {
+                // 로컬 스토리지에서 기존 데이터 로드
+                const stored = localStorage.getItem('columnMappingPrompts');
+                savedPrompts = stored ? JSON.parse(stored) : [];
+                
+                // 항상 새로운 ID로 프롬프트 생성
+                const promptId = Date.now().toString();
+                const prompt = {
+                    id: promptId,
+                    name: name,
+                    content: content,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                
+                savedPrompts.push(prompt);
+                localStorage.setItem('columnMappingPrompts', JSON.stringify(savedPrompts));
+                
+                showResult(`프롬프트 "${name}"이(가) 저장되었습니다.`, 'success');
+                
+                // 목록 자동 새로고침
+                loadPrompts();
+                
+                // 저장된 프롬프트를 현재 선택으로 설정
+                currentPromptId = promptId;
+                updatePromptButtonVisibility();
+                
+            } catch (error) {
+                console.error('프롬프트 저장 중 오류:', error);
+                showResult('프롬프트 저장 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 기존 프롬프트 수정
+        function updatePrompt() {
+            const name = document.getElementById('prompt-name').value.trim() || '이름없는 프롬프트';
+            const content = document.getElementById('custom-prompt').value.trim();
+
+            if (!content) {
+                showResult('프롬프트 내용을 입력해주세요.', 'error');
+                return;
+            }
+
+            if (!currentPromptId) {
+                showResult('수정할 프롬프트가 선택되지 않았습니다.', 'error');
+                return;
+            }
+
+            try {
+                // 로컬 스토리지에서 기존 데이터 로드
+                const stored = localStorage.getItem('columnMappingPrompts');
+                savedPrompts = stored ? JSON.parse(stored) : [];
+                
+                const existingIndex = savedPrompts.findIndex(p => p.id === currentPromptId);
+                
+                if (existingIndex >= 0) {
+                    // 기존 프롬프트 수정 - created_at 유지
+                    const prompt = {
+                        ...savedPrompts[existingIndex],
+                        name: name,
+                        content: content,
+                        updated_at: new Date().toISOString()
+                    };
+                    savedPrompts[existingIndex] = prompt;
+
+                    localStorage.setItem('columnMappingPrompts', JSON.stringify(savedPrompts));
+                    
+                    showResult(`프롬프트 "${name}"이(가) 수정되었습니다.`, 'success');
+                    
+                    // 목록 자동 새로고침
+                    loadPrompts();
+                } else {
+                    showResult('수정할 프롬프트를 찾을 수 없습니다.', 'error');
+                }
+                
+            } catch (error) {
+                console.error('프롬프트 수정 중 오류:', error);
+                showResult('프롬프트 수정 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 저장된 프롬프트 목록 로드
+        function loadPrompts() {
+            const listEl = document.getElementById('prompt-list');
+            const loadingEl = document.getElementById('prompt-loading');
+            
+            if (!listEl || !loadingEl) return;
+            
+            // 로딩 표시
+            loadingEl.classList.add('show');
+            
+            setTimeout(() => {
+                try {
+                    const stored = localStorage.getItem('columnMappingPrompts');
+                    savedPrompts = stored ? JSON.parse(stored) : [];
+                    
+                    // 기존 프롬프트 아이템들만 제거
+                    const promptItems = listEl.querySelectorAll('.prompt-item');
+                    promptItems.forEach(item => item.remove());
+                    
+                    // 기존 메시지들 제거
+                    const messages = listEl.querySelectorAll('div:not(.loading):not(#prompt-loading)');
+                    messages.forEach(msg => {
+                        if (!msg.classList.contains('prompt-item') && msg.id !== 'prompt-loading') {
+                            msg.remove();
+                        }
+                    });
+                    
+                    if (savedPrompts.length === 0) {
+                        const emptyMessage = document.createElement('div');
+                        emptyMessage.style.cssText = 'padding: 20px; text-align: center; color: #6c757d;';
+                        emptyMessage.textContent = '저장된 프롬프트가 없습니다.';
+                        listEl.appendChild(emptyMessage);
+                    } else {
+                        savedPrompts.forEach(prompt => {
+                            const item = document.createElement('div');
+                            item.className = 'prompt-item';
+                            item.dataset.promptId = prompt.id;
+                            
+                            // 현재 선택된 프롬프트인지 확인하여 selected 클래스 추가
+                            if (currentPromptId && currentPromptId === prompt.id) {
+                                item.classList.add('selected');
+                            }
+                            
+                            item.innerHTML = `
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600;">${prompt.name}</div>
+                                        <div class="prompt-meta">
+                                            생성: ${new Date(prompt.created_at).toLocaleString()}
+                                            ${prompt.updated_at !== prompt.created_at ? ' | 수정: ' + new Date(prompt.updated_at).toLocaleString() : ''}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px; margin: 0;" onclick="deletePrompt('${prompt.id}')" title="삭제">🗑️</button>
+                                    </div>
+                                </div>
+                            `;
+                            item.onclick = (e) => {
+                                if (!e.target.closest('button')) {
+                                    loadPromptContent(prompt);
+                                }
+                            };
+                            listEl.appendChild(item);
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('프롬프트 로드 중 오류:', error);
+                    
+                    const promptItems = listEl.querySelectorAll('.prompt-item');
+                    promptItems.forEach(item => item.remove());
+                    
+                    const errorMessage = document.createElement('div');
+                    errorMessage.style.cssText = 'padding: 20px; text-align: center; color: #dc3545;';
+                    errorMessage.textContent = '프롬프트 로드 중 오류가 발생했습니다.';
+                    listEl.appendChild(errorMessage);
+                } finally {
+                    // 로딩 표시 제거
+                    loadingEl.classList.remove('show');
+                }
+            }, 300);
+        }
+
+        // 프롬프트 내용 로드
+        function loadPromptContent(prompt) {
+            document.getElementById('prompt-name').value = prompt.name;
+            document.getElementById('custom-prompt').value = prompt.content;
+            currentPromptId = prompt.id;
+            
+            // 버튼 가시성 업데이트
+            updatePromptButtonVisibility();
+            
+            // 목록에서 선택된 항목 시각적 표시 업데이트
+            updateSelectedPrompt(prompt.id);
+            
+            showResult(`프롬프트 "${prompt.name}"을(를) 로드했습니다.`, 'success');
+        }
+
+        // 선택된 프롬프트 시각적 표시 업데이트
+        function updateSelectedPrompt(selectedId) {
+            const promptItems = document.querySelectorAll('.prompt-item');
+            promptItems.forEach(item => {
+                if (item.dataset.promptId === selectedId) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // 프롬프트 삭제
+        function deletePrompt(promptId) {
+            if (confirm('정말로 이 프롬프트를 삭제하시겠습니까?')) {
+                try {
+                    // 로컬 스토리지에서 최신 데이터 로드
+                    const stored = localStorage.getItem('columnMappingPrompts');
+                    savedPrompts = stored ? JSON.parse(stored) : [];
+                    
+                    const beforeCount = savedPrompts.length;
+                    savedPrompts = savedPrompts.filter(p => p.id !== promptId);
+                    const afterCount = savedPrompts.length;
+                    
+                    if (beforeCount === afterCount) {
+                        showResult('삭제할 프롬프트를 찾을 수 없습니다.', 'error');
+                        return;
+                    }
+                    
+                    localStorage.setItem('columnMappingPrompts', JSON.stringify(savedPrompts));
+                    
+                    // 현재 선택된 프롬프트가 삭제된 경우 초기화
+                    if (currentPromptId === promptId) {
+                        clearPrompt();
+                    }
+                    
+                    // 목록 새로고침
+                    loadPrompts();
+                    
+                    showResult('프롬프트가 삭제되었습니다.', 'success');
+                    
+                } catch (error) {
+                    console.error('프롬프트 삭제 중 오류:', error);
+                    showResult('프롬프트 삭제 중 오류가 발생했습니다.', 'error');
+                }
+            }
         }
 
         // 파일 초기화
