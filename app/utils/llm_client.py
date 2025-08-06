@@ -3,7 +3,7 @@ LLM 클라이언트 통합 관리 - 싱글톤 패턴으로 중복 호출 방지
 """
 import os
 import logging
-from typing import Optional
+from typing import Optional, Union
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI, ChatOpenAI, AzureOpenAIEmbeddings, OpenAIEmbeddings
 from app.utils.langsmith_config import langsmith_manager
@@ -33,8 +33,8 @@ class LLMClientManager:
         self._initialized = True
         
         # 클라이언트들 초기화
-        self.chat_client: Optional[AzureChatOpenAI | ChatOpenAI] = None
-        self.embedding_client: Optional[AzureOpenAIEmbeddings | OpenAIEmbeddings] = None
+        self.chat_client: Optional[Union[AzureChatOpenAI, ChatOpenAI]] = None
+        self.embedding_client: Optional[Union[AzureOpenAIEmbeddings, OpenAIEmbeddings]] = None
         
         # Azure vs OpenAI 설정 확인
         self.api_type = os.getenv("OPENAI_API_TYPE", "openai")
@@ -108,11 +108,11 @@ class LLMClientManager:
             logger.error(f"❌ Embedding 클라이언트 초기화 실패: {e}")
             self.embedding_client = None
     
-    def get_chat_client(self) -> Optional[AzureChatOpenAI | ChatOpenAI]:
+    def get_chat_client(self) -> Optional[Union[AzureChatOpenAI, ChatOpenAI]]:
         """Chat 클라이언트 반환"""
         return self.chat_client
     
-    def get_embedding_client(self) -> Optional[AzureOpenAIEmbeddings | OpenAIEmbeddings]:
+    def get_embedding_client(self) -> Optional[Union[AzureOpenAIEmbeddings, OpenAIEmbeddings]]:
         """Embedding 클라이언트 반환"""
         return self.embedding_client
     
