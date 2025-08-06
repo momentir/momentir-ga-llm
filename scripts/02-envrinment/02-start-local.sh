@@ -149,4 +149,4 @@ echo "🛑 서버 중지: Ctrl+C"
 echo "=================================================="
 
 # FastAPI 서버 실행
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
