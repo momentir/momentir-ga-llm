@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, or_, func
 from app.db_models import Customer, CustomerProduct, User
 from app.models import CustomerCreateRequest, CustomerUpdateRequest
 from app.models.main_models import CustomerProductCreate, CustomerProductResponse
-from app.utils.langsmith_config import langsmith_manager, trace_llm_call, trace_excel_upload_call
+from app.utils.langsmith_config import langsmith_manager, trace_llm_call, trace_excel_upload_call, get_excel_upload_llm_client
 from app.utils.llm_client import llm_client_manager
 from app.utils.dynamic_prompt_loader import get_column_mapping_prompt, prompt_loader
 from app.models.prompt_models import PromptCategory
@@ -438,14 +438,16 @@ JSON 형식으로 응답해주세요:
   "confidence_score": 0.95
 }}"""
 
-            # LangChain 클라이언트를 엑셀 업로드 프로젝트로 설정하여 사용
-            excel_project_name = langsmith_manager.get_excel_upload_project_name()
-            
-            # 엑셀 업로드 전용 콜백 설정
-            callbacks = langsmith_manager.get_callbacks(excel_project_name)
-            
-            # LangChain 클라이언트 사용 (엑셀 업로드 프로젝트로 LangSmith 추적)
-            response = await self.llm_client.ainvoke(user_prompt, config={"callbacks": callbacks})
+            # 엑셀 업로드 전용 LangChain 클라이언트 사용
+            excel_llm_client = get_excel_upload_llm_client()
+            if excel_llm_client:
+                # LangSmith가 활성화된 경우, 엑셀 업로드 전용 클라이언트 사용
+                logger.info(f"🔍 엑셀 업로드 LLM 클라이언트 사용 - 프로젝트: {langsmith_manager.get_excel_upload_project_name()}")
+                response = await excel_llm_client.ainvoke(user_prompt)
+            else:
+                # LangSmith가 비활성화된 경우, 기본 클라이언트 사용
+                logger.info("⚠️ 기본 LLM 클라이언트 사용 (LangSmith 비활성화)")
+                response = await self.llm_client.ainvoke(user_prompt)
             result_text = response.content
             
             # JSON 파싱 (마크다운 코드 블록 제거)

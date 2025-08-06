@@ -205,3 +205,38 @@ def trace_excel_upload_call(name: str, metadata: dict = None):
     """엑셀 업로드 관련 LLM 호출 추적 데코레이터"""
     project_name = langsmith_manager.get_excel_upload_project_name()
     return langsmith_manager.trace_run(name, "llm", metadata, project_name)
+
+def get_excel_upload_llm_client():
+    """엑셀 업로드 전용 LangChain 클라이언트 반환 (엑셀 업로드 프로젝트로 설정됨)"""
+    if not langsmith_manager.enabled:
+        return None
+    
+    # 엑셀 업로드 프로젝트명 가져오기
+    excel_project = langsmith_manager.get_excel_upload_project_name()
+    
+    # 엑셀 업로드 전용 콜백 생성
+    callbacks = langsmith_manager.get_callbacks(excel_project)
+    
+    # API 타입에 따라 적절한 클라이언트 생성
+    api_type = os.getenv("OPENAI_API_TYPE", "openai")
+    
+    try:
+        if api_type == "azure":
+            from langchain_openai import AzureChatOpenAI
+            return AzureChatOpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+                deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4"),
+                callbacks=callbacks
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                model="gpt-4",
+                callbacks=callbacks
+            )
+    except Exception as e:
+        logger.warning(f"⚠️  엑셀 업로드 전용 LLM 클라이언트 생성 실패: {e}")
+        return None
