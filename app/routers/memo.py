@@ -84,9 +84,36 @@ async def refine_memo(request: MemoRefineRequest, db: AsyncSession = Depends(get
         
         # 메모 정제 및 데이터베이스 저장
         custom_prompt = getattr(request, 'custom_prompt', None)
-        result = await memo_refiner.refine_and_save_memo(request.memo, db, custom_prompt=custom_prompt)
         
-        refined_data = result["refined_data"]
+        if custom_prompt:
+            # 사용자 정의 프롬프트가 있는 경우: refine_memo만 호출하여 raw_response 획득
+            refined_data = await memo_refiner.refine_memo(
+                memo=request.memo, 
+                user_session=None, 
+                db_session=db, 
+                custom_prompt=custom_prompt
+            )
+            
+            # 별도로 데이터베이스에 저장
+            memo_record = await memo_refiner.save_memo_to_db(
+                original_memo=request.memo,
+                refined_data=refined_data,
+                db_session=db
+            )
+            
+            # 유사한 메모 검색
+            similar_memos = await memo_refiner.find_similar_memos(request.memo, db, limit=3)
+            
+            result = {
+                "memo_id": str(memo_record.id),
+                "refined_data": refined_data,
+                "similar_memos_count": len(similar_memos),
+                "created_at": memo_record.created_at.isoformat()
+            }
+        else:
+            # 기존 로직: refine_and_save_memo 사용
+            result = await memo_refiner.refine_and_save_memo(request.memo, db, custom_prompt=None)
+            refined_data = result["refined_data"]
         
         # 시간 표현 변환
         time_expressions = []
@@ -121,7 +148,8 @@ async def refine_memo(request: MemoRefineRequest, db: AsyncSession = Depends(get
             insurance_info=insurance_info,
             original_memo=request.memo,
             similar_memos_count=result["similar_memos_count"],
-            processed_at=datetime.fromisoformat(result["created_at"].replace('Z', '+00:00'))
+            processed_at=datetime.fromisoformat(result["created_at"].replace('Z', '+00:00')),
+            raw_response=refined_data.get("raw_response")
         )
         
     except HTTPException:

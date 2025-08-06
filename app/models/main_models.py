@@ -29,6 +29,7 @@ class RefinedMemoResponse(BaseModel):
     original_memo: str = Field(..., description="원본 메모")
     similar_memos_count: int = Field(..., description="유사한 메모 개수")
     processed_at: datetime = Field(default_factory=datetime.now, description="처리 시간")
+    raw_response: Optional[str] = Field(None, description="사용자 정의 프롬프트 사용 시 LLM 원본 응답")
 
 
 class MemoAnalyzeRequest(BaseModel):

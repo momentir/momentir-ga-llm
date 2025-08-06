@@ -665,7 +665,14 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    showResult(JSON.stringify(result, null, 2), 'success');
+                    console.log(result)
+                    // 사용자 정의 프롬프트의 경우 raw_response와 전체 결과를 모두 표시
+                    if (result.raw_response) {
+                        const displayMessage = `=== AI 원본 응답 ===\n${result.raw_response}\n\n=== 전체 API 응답 ===\n${JSON.stringify(result, null, 2)}`;
+                        showResult(displayMessage, 'success');
+                    } else {
+                        showResult(JSON.stringify(result, null, 2), 'success');
+                    }
                 } else {
                     showResult(`오류: ${result.detail || '알 수 없는 오류가 발생했습니다.'}`, 'error');
                 }
@@ -681,8 +688,9 @@
             const container = document.getElementById('result-container');
             const resultBox = document.createElement('div');
             resultBox.className = `result-box ${type}`;
+
             resultBox.textContent = message;
-            
+
             container.innerHTML = '';
             container.appendChild(resultBox);
             

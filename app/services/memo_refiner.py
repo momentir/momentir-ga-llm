@@ -235,24 +235,28 @@ class MemoRefinerService:
             # 파서를 통해 결과 파싱 (사용자 정의 프롬프트도 JSON 형태로 처리 시도)
             logger.info("✅ LLM 응답 파싱 시작")
             result = self.parser.parse(result_text)
-            
-            # 사용자 정의 프롬프트로 파싱에 실패한 경우 간단한 응답 구조로 처리
-            if custom_prompt and not result.get("summary"):
-                logger.info("✅ 사용자 정의 프롬프트 - JSON 파싱 실패, 단순 텍스트로 처리")
-                result = {
-                    "summary": result_text.strip()[:500] if result_text.strip() else "응답 없음",
-                    "status": "사용자 정의 프롬프트 응답",
-                    "keywords": [],
-                    "time_expressions": [],
-                    "required_actions": [],
-                    "insurance_info": {
-                        "products": [],
-                        "premium_amount": None,
-                        "interest_products": [],
-                        "policy_changes": []
+
+            # 사용자 정의 프롬프트인 경우 항상 원본 응답을 포함
+            if custom_prompt:
+                logger.info("✅ 사용자 정의 프롬프트 - 원본 응답 포함")
+                if not result.get("summary"):
+                    # JSON 파싱 실패한 경우
+                    result = {
+                        "summary": "사용자 정의 프롬프트 응답",
+                        "status": "원본 응답",
+                        "keywords": ["사용자 정의 프롬프트"],
+                        "time_expressions": [],
+                        "required_actions": [],
+                        "insurance_info": {
+                            "products": [],
+                            "premium_amount": None,
+                            "interest_products": [],
+                            "policy_changes": []
+                        }
                     }
-                }
-            
+                # 성공/실패 관계없이 원본 응답 항상 추가
+                result["raw_response"] = result_text.strip()
+
             # 결과 검증 및 기본값 설정
             validated_result = self._validate_result(result)
             
@@ -317,6 +321,10 @@ class MemoRefinerService:
             "required_actions": result.get("required_actions", []) or ["추가 분석 필요"],
             "insurance_info": result.get("insurance_info", {}) or {}
         }
+        
+        # raw_response 필드가 있으면 보존
+        if "raw_response" in result:
+            validated["raw_response"] = result["raw_response"]
         
         # 키워드가 문자열인 경우 리스트로 변환
         if isinstance(validated["keywords"], str):
