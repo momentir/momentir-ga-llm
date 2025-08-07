@@ -129,48 +129,14 @@ class MemoRefinerService:
         
         self.parser = MemoRefinementParser()
         
-        # 호환성을 위한 속성들 (기존 코드와의 호환성 유지)
+        # LLM 클라이언트들
         self.llm_client = self.llm_manager.get_chat_client()
         self.embedding_llm = self.llm_manager.get_embedding_client()
         self.chat_model = self.llm_manager.get_chat_model_name()
         self.embedding_model = self.llm_manager.get_embedding_model_name()
         
-        # 원본 클라이언트들 (Fallback용)
-        self._init_fallback_clients()
-        
         logger.info("✅ MemoRefinerService 초기화 완료 (싱글톤 클라이언트 사용)")
     
-    def _init_fallback_clients(self):
-        """Fallback용 원본 클라이언트들 초기화"""
-        api_type = os.getenv("OPENAI_API_TYPE", "openai")
-        
-        try:
-            if api_type == "azure":
-                self.client = openai.AsyncAzureOpenAI(
-                    api_key=os.getenv("OPENAI_API_KEY"),
-                    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-                    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01")
-                )
-                
-                embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
-                embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
-                
-                if embedding_endpoint and embedding_api_key:
-                    self.embedding_client = openai.AsyncAzureOpenAI(
-                        api_key=embedding_api_key,
-                        azure_endpoint=embedding_endpoint,
-                        api_version=os.getenv("AZURE_EMBEDDING_API_VERSION", "2024-02-01")
-                    )
-                else:
-                    self.embedding_client = None
-            else:
-                self.client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                self.embedding_client = self.client
-                
-        except Exception as e:
-            logger.warning(f"⚠️  Fallback 클라이언트 초기화 실패: {e}")
-            self.client = None
-            self.embedding_client = None
     
     async def refine_memo(self, memo: str, user_session: str = None, db_session: AsyncSession = None, custom_prompt: str = None) -> Dict[str, Any]:
         """
@@ -375,22 +341,7 @@ class MemoRefinerService:
             return embedding
             
         except Exception as e:
-            logger.warning(f"LangChain 임베딩 생성 실패: {str(e)}")
-            
-            # Fallback: 원본 클라이언트 사용 (추적 없음)
-            if self.embedding_client and self.embedding_model:
-                try:
-                    logger.info("Fallback: 원본 임베딩 클라이언트 사용")
-                    response = await self.embedding_client.embeddings.create(
-                        model=self.embedding_model,
-                        input=text
-                    )
-                    embedding = response.data[0].embedding
-                    logger.info(f"Fallback 임베딩 생성 완료: 차원 {len(embedding)}")
-                    return embedding
-                except Exception as fallback_e:
-                    logger.warning(f"Fallback 임베딩도 실패: {fallback_e}")
-            
+            logger.error(f"임베딩 생성 실패: {str(e)}")
             return None
     
     async def save_memo_to_db(self, 
