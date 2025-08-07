@@ -54,7 +54,7 @@ class LLMClientManager:
                     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
                     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
                     deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4"),
-                    callbacks=langsmith_manager.get_callbacks(),
+                    callbacks=langsmith_manager.get_callbacks(langsmith_manager.project_name),
                     temperature=0.1,
                     max_tokens=1000
                 )
@@ -64,7 +64,7 @@ class LLMClientManager:
                 self.chat_client = ChatOpenAI(
                     api_key=os.getenv("OPENAI_API_KEY"),
                     model="gpt-4",
-                    callbacks=langsmith_manager.get_callbacks(),
+                    callbacks=langsmith_manager.get_callbacks(langsmith_manager.project_name),
                     temperature=0.1,
                     max_tokens=1000
                 )
@@ -131,6 +131,17 @@ class LLMClientManager:
     def is_embedding_ready(self) -> bool:
         """Embedding 클라이언트가 준비되었는지 확인"""
         return self.embedding_client is not None
+    
+    def refresh_callbacks(self):
+        """콜백을 새로운 프로젝트명으로 갱신"""
+        if self.chat_client and hasattr(self.chat_client, 'callbacks'):
+            self.chat_client.callbacks = langsmith_manager.get_callbacks(langsmith_manager.project_name)
+            logger.info(f"✅ Chat 클라이언트 콜백 갱신: {langsmith_manager.project_name}")
+    
+    def reinitialize_chat_client(self):
+        """Chat 클라이언트 재초기화 - 새로운 프로젝트명으로"""
+        self._init_chat_client()
+        logger.info(f"✅ Chat 클라이언트 재초기화 완료: {langsmith_manager.project_name}")
 
 
 # 전역 싱글톤 인스턴스

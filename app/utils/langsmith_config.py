@@ -6,6 +6,13 @@ from langchain_core.tracers.langchain import LangChainTracer
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 import logging
 
+# .env 파일 로드 시도
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 class LangSmithManager:
@@ -22,13 +29,21 @@ class LangSmithManager:
     
     def _get_project_name(self) -> str:
         """환경별 LangSmith 프로젝트명 결정"""
-        # 기본값 설정
-        default_project = "momentir-cx-llm"
+        # 운영환경 감지 조건들
+        is_production = (
+            os.getenv("ENVIRONMENT") == "production" or 
+            os.getenv("AWS_EXECUTION_ENV") is not None or
+            os.getenv("ECS_CONTAINER_METADATA_URI") is not None or
+            os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+        )
         
-        # 환경 감지
-        is_production = os.getenv("ENVIRONMENT") == "production" or os.getenv("AWS_EXECUTION_ENV") is not None
+        # 로컬 환경 명시적 감지 (운영환경이 아닌 경우만 체크)
+        is_local = not is_production and (
+            os.getenv("ENVIRONMENT") == "local" or
+            os.path.exists(".env")  # .env 파일 존재하고 운영환경이 아닌 경우 로컬로 간주
+        )
         
-        # 메모 정제용 프로젝트명
+        # 메모 정제용 프로젝트명 결정
         if is_production:
             return "momentir-cx-llm-memo"
         else:
@@ -36,10 +51,21 @@ class LangSmithManager:
     
     def get_excel_upload_project_name(self) -> str:
         """엑셀 업로드용 프로젝트명 반환"""
-        # 환경 감지
-        is_production = os.getenv("ENVIRONMENT") == "production" or os.getenv("AWS_EXECUTION_ENV") is not None
+        # 운영환경 감지 조건들
+        is_production = (
+            os.getenv("ENVIRONMENT") == "production" or 
+            os.getenv("AWS_EXECUTION_ENV") is not None or
+            os.getenv("ECS_CONTAINER_METADATA_URI") is not None or
+            os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+        )
         
-        # 엑셀 업로드용 프로젝트명
+        # 로컬 환경 명시적 감지 (운영환경이 아닌 경우만 체크)
+        is_local = not is_production and (
+            os.getenv("ENVIRONMENT") == "local" or
+            os.path.exists(".env")  # .env 파일 존재하고 운영환경이 아닌 경우 로컬로 간주
+        )
+        
+        # 엑셀 업로드용 프로젝트명 결정
         if is_production:
             return "momentir-cx-llm-excel-upload"
         else:
