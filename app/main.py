@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
-from app.routers import memo, customer, events, prompts
+from app.routers import memo, customer, events, prompts, auth
 from app.database import db_manager
 from app.utils.langsmith_config import langsmith_manager
 from dotenv import load_dotenv
@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="보험계약자 메모 정제 API",
+    title="Momentir CX API",
     description="보험계약자의 고객 메모를 LLM을 통해 정제하고 분석하는 시스템 (PostgreSQL + pgvector)",
     version="1.0.0",
     lifespan=lifespan
@@ -79,6 +79,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(memo.router)
 app.include_router(customer.router)
 app.include_router(events.router)
@@ -95,7 +96,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def root():
     return {
-        "message": "보험계약자 메모 정제 API",
+        "message": "Momentir CX API",
         "version": "1.0.0",
         "web_interface": "/static/prompt_manager.html",
         "endpoints": {
@@ -120,6 +121,12 @@ async def root():
             "prompts_templates": "/api/prompts/templates",
             "prompts_render": "/api/prompts/render",
             "prompts_ab_tests": "/api/prompts/ab-tests",
+            "auth_login": "/v1/auth/login",
+            "auth_logout": "/v1/auth/logout",
+            "auth_signup": "/v1/auth/sign-up",
+            "auth_find_email": "/v1/auth/find-my-email",
+            "auth_reset_password": "/v1/auth/reset-password",
+            "auth_verify_email": "/v1/auth/verify-email-account",
             "docs": "/docs"
         }
     }

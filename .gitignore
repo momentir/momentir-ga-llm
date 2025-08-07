@@ -210,11 +210,26 @@ test_data/
 desktop.ini
 
 # Project specific
-# API Keys and sensitive data
-.env.local
-.env.development
-.env.production
+# API Keys and sensitive data - CRITICAL SECURITY
+*.key
+*.pem
+*.p12
+*.jks
+**/credentials.json
+**/service-account*.json
+auth.json
 config/local.py
+secrets/
+keys/
+certs/
+
+# Configuration files that may contain secrets
+app_config.json
+local_config.json
+config.local.*
+settings.local.*
+.secrets
+.credentials
 
 # LangSmith traces
 langsmith_traces/
@@ -302,11 +317,24 @@ aws/*.tmp
 
 # Database passwords and secrets
 db_password.txt
+database.conf
+database_config.json
+connection_strings.json
 secrets.txt
-*.key
-*.pem
-*.p12
-*.jks
+api_keys.txt
+passwords.txt
+tokens.txt
+
+# SSL/TLS certificates and keys
+ssl/
+certificates/
+private/
+*.crt
+*.cer
+*.ca-bundle
+*.p7b
+*.p7s
+*.pfx
 
 # Docker volumes and data
 postgres_data/
@@ -331,12 +359,24 @@ uvicorn.log
 *.kubeconfig
 k8s-secrets.yaml
 
-# Environment-specific configs
+# Environment files - ALL .env files should be ignored
+.env
+.env.*
+.env.local
 .env.staging
 .env.testing
-.env.local
+.env.development
+.env.production
+
+# Backup and temporary environment files
+.env.backup
+.env.bak
+.env.temp
+.env.old
 
 # Build artifacts
 dist-docker/
 build-artifacts/
 documents/guide/DEPLOYMENT.md
+alembic/env_async.py
+alembic/env.py

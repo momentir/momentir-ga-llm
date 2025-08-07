@@ -38,6 +38,10 @@ def get_url():
     """환경변수에서 DATABASE_URL을 가져오거나 기본값 사용"""
     return os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/insurance_memo")
 
+    if "postgresql+asyncpg://" in url:
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    return url
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

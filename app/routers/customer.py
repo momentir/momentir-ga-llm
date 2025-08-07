@@ -11,7 +11,7 @@ from app.models import (
     ErrorResponse
 )
 from app.models.main_models import ExcelUploadRequest, CustomerProductCreate, CustomerProductResponse
-from app.db_models.main_models import User
+from app.db_models import User
 from app.services.customer_service import CustomerService
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db

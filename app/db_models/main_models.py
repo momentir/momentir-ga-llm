@@ -7,29 +7,6 @@ from pgvector.sqlalchemy import Vector
 from app.database import Base
 
 
-class User(Base):
-    """사용자(설계사) 테이블 - 기존 users 테이블 스키마"""
-    __tablename__ = "users"
-    
-    id = Column(BigInteger, primary_key=True, comment="사용자 ID")
-    name = Column(String(30), nullable=False, comment="사용자 이름")
-    email = Column(String(60), nullable=False, comment="이메일")
-    encrypted_password = Column(String(256), nullable=False, comment="암호화된 비밀번호")
-    phone = Column(String(30), nullable=False, comment="전화번호")
-    sign_up_token = Column(String(50), nullable=True, comment="가입 토큰")
-    reset_password_token = Column(String(256), nullable=True, comment="비밀번호 재설정 토큰")
-    agreed_marketing_opt_in = Column(Boolean, default=False, comment="마케팅 수신 동의")
-    sign_up_status = Column(String(20), default="IN_PROGRESS", comment="가입 상태")
-    created_at = Column(DateTime(timezone=True), nullable=True, comment="생성 시간")
-    updated_at = Column(DateTime(timezone=True), nullable=True, comment="수정 시간")
-    deleted_at = Column(DateTime(timezone=True), nullable=True, comment="삭제 시간")
-    
-    # 관계 설정
-    customers = relationship("Customer", back_populates="user")
-    
-    def __repr__(self):
-        return f"<User(id={self.id}, name={self.name}, email={self.email})>"
-
 
 class CustomerMemo(Base):
     """고객 메모 테이블 - PROJECT_CONTEXT_NEW.md의 memos 스키마"""
@@ -84,7 +61,7 @@ class Customer(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="생성 시간")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="수정 시간")
     
-    # 관계 설정
+    # 관계 설정 (User는 auth_models에서 import됨)
     user = relationship("User", back_populates="customers")
     products = relationship("CustomerProduct", back_populates="customer", cascade="all, delete-orphan")
     memos = relationship("CustomerMemo", back_populates="customer", cascade="all, delete-orphan")
