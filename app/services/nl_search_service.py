@@ -14,6 +14,8 @@ from sqlalchemy import text
 
 from app.utils.llm_client import LLMClientManager
 from app.database import read_only_db_manager
+from app.prompts.nl_search_prompts import nl_prompt_manager
+from app.services.intent_classifier import korean_intent_classifier, ClassificationResultDict
 
 logger = logging.getLogger(__name__)
 
@@ -153,56 +155,28 @@ class NaturalLanguageSearchService:
     
     def _create_intent_analysis_chain(self):
         """의도 분석 체인 생성 (LCEL 패턴)"""
-        intent_prompt = ChatPromptTemplate.from_messages([
-            ("system", """당신은 자연어 검색 쿼리의 의도를 분석하는 전문가입니다.
-사용자의 검색 쿼리를 분석하여 다음을 결정하세요:
-
-1. 검색 의도 (SearchIntent):
-   - customer_info: 고객 정보 검색
-   - memo_search: 메모 검색
-   - event_analysis: 이벤트 분석
-   - analytics: 통계/분석
-   - unknown: 알 수 없음
-
-2. 검색 유형 (SearchType):
-   - simple_filter: 단순 필터링
-   - complex_join: 복잡한 조인
-   - aggregation: 집계 연산
-   - time_series: 시계열 분석
-
-3. 엔터티 추출: 날짜, 이름, 키워드 등
-
-응답은 반드시 JSON 형식으로 제공하세요."""),
-            ("user", "검색 쿼리: {query}")
-        ])
+        async def generate_prompt_with_context(inputs):
+            query = inputs["query"]
+            context = inputs.get("context")
+            prompt_text = await nl_prompt_manager.generate_intent_analysis_prompt(query, context)
+            return {"messages": [("user", prompt_text)]}
         
         parser = PydanticOutputParser(pydantic_object=IntentAnalysisResult)
         
-        return intent_prompt | self.chat_client | parser
+        return generate_prompt_with_context | ChatPromptTemplate.from_messages([("user", "{messages}")]) | self.chat_client | parser
     
     def _create_sql_generation_chain(self):
         """SQL 생성 체인 생성 (LCEL 패턴)"""
-        sql_prompt = ChatPromptTemplate.from_messages([
-            ("system", """당신은 자연어를 SQL로 변환하는 전문가입니다.
-데이터베이스 스키마:
-{schema}
-
-의도 분석 결과:
-{intent_analysis}
-
-다음 규칙을 따라 SQL을 생성하세요:
-1. PostgreSQL 문법 사용
-2. 보안을 위해 파라미터 바인딩 사용
-3. 성능을 위해 적절한 인덱스 힌트 고려
-4. 최대 100행으로 제한
-
-응답은 JSON 형식으로 제공하세요."""),
-            ("user", "자연어 쿼리: {query}")
-        ])
+        async def generate_sql_prompt_with_context(inputs):
+            query = inputs["query"]
+            intent_analysis = inputs["intent_analysis"]
+            context = inputs.get("context")
+            prompt_text = await nl_prompt_manager.generate_sql_generation_prompt(query, intent_analysis, context)
+            return {"messages": [("user", prompt_text)]}
         
         parser = PydanticOutputParser(pydantic_object=SQLGenerationResult)
         
-        return sql_prompt | self.chat_client | parser
+        return generate_sql_prompt_with_context | ChatPromptTemplate.from_messages([("user", "{messages}")]) | self.chat_client | parser
     
     def _create_search_chain(self):
         """통합 검색 체인 생성 (LCEL 패턴)"""
@@ -212,7 +186,6 @@ class NaturalLanguageSearchService:
         }).assign(
             sql_result=lambda x: self.sql_generation_chain.invoke({
                 "query": x["query"],
-                "schema": str(self.database_schema),
                 "intent_analysis": x["intent_analysis"]
             })
         )
@@ -230,20 +203,68 @@ class NaturalLanguageSearchService:
         try:
             logger.info(f"의도 분석 시작: {query}")
             
-            result = await self.intent_chain.ainvoke({"query": query})
+            # 1. 한국어 의도 분류기로 사전 분석
+            korean_result: ClassificationResultDict = await korean_intent_classifier.classify(query)
             
-            logger.info(f"의도 분석 완료: {result.intent}")
+            # 2. LangChain 체인으로 세밀한 분석 (선택적)
+            try:
+                llm_result = await self.intent_chain.ainvoke({
+                    "query": query, 
+                    "context": {"korean_analysis": korean_result}
+                })
+                
+                # 한국어 분석 결과와 LLM 결과 결합
+                combined_entities = {**korean_result["entities"], **llm_result.entities}
+                final_confidence = max(korean_result["query_type"]["confidence"], llm_result.confidence)
+                
+                result = IntentAnalysisResult(
+                    intent=llm_result.intent,
+                    search_type=llm_result.search_type,
+                    entities=combined_entities,
+                    confidence=final_confidence,
+                    reasoning=f"한국어 분류기: {korean_result['query_type']['reasoning']}, LLM: {llm_result.reasoning}"
+                )
+                
+            except Exception as llm_e:
+                logger.warning(f"LLM 의도 분석 실패, 한국어 분류기 결과 사용: {llm_e}")
+                
+                # 한국어 분류 결과를 IntentAnalysisResult로 변환
+                intent_mapping = {
+                    "simple_query": SearchIntent.CUSTOMER_INFO,
+                    "filtering": SearchIntent.CUSTOMER_INFO,  
+                    "aggregation": SearchIntent.ANALYTICS,
+                    "join": SearchIntent.MEMO_SEARCH
+                }
+                
+                search_type_mapping = {
+                    "simple_query": SearchType.SIMPLE_FILTER,
+                    "filtering": SearchType.SIMPLE_FILTER,
+                    "aggregation": SearchType.AGGREGATION,
+                    "join": SearchType.COMPLEX_JOIN
+                }
+                
+                korean_main_type = korean_result["query_type"]["main_type"]
+                
+                result = IntentAnalysisResult(
+                    intent=intent_mapping.get(korean_main_type, SearchIntent.UNKNOWN),
+                    search_type=search_type_mapping.get(korean_main_type, SearchType.SIMPLE_FILTER),
+                    entities=korean_result["entities"],
+                    confidence=korean_result["query_type"]["confidence"],
+                    reasoning=f"한국어 분류기만 사용: {korean_result['query_type']['reasoning']}"
+                )
+            
+            logger.info(f"의도 분석 완료: {result.intent} (신뢰도: {result.confidence:.2f})")
             return result
             
         except Exception as e:
-            logger.error(f"의도 분석 실패: {e}")
-            # 기본값 반환
+            logger.error(f"의도 분석 완전 실패: {e}")
+            # 최후 기본값 반환
             return IntentAnalysisResult(
                 intent=SearchIntent.UNKNOWN,
                 search_type=SearchType.SIMPLE_FILTER,
                 entities={},
                 confidence=0.0,
-                reasoning=f"분석 중 오류 발생: {str(e)}"
+                reasoning=f"전체 분석 실패: {str(e)}"
             )
     
     async def generate_sql(self, query: str, intent_analysis: IntentAnalysisResult) -> SQLGenerationResult:

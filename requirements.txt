@@ -28,3 +28,6 @@ email-validator==2.2.0
 sqlparse==0.5.1
 pytest==8.3.4
 pytest-asyncio==0.23.8
+konlpy==0.6.0
+soynlp==0.0.493
+aiosqlite==0.20.0
