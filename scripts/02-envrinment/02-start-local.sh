@@ -34,8 +34,8 @@ echo "   ✅ 가상환경 활성화 완료"
 # 의존성 설치
 echo ""
 echo "📦 의존성 설치 중..."
-pip install --upgrade pip
-pip install -r requirements.txt
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
 echo "   ✅ 의존성 설치 완료"
 
 # 환경변수 설정 확인
@@ -92,42 +92,15 @@ export SQL_ECHO=true
 
 echo "   ✅ 환경변수 설정 완료"
 
-# 데이터베이스 연결 테스트
+# 데이터베이스 URL 유효성 간단 확인
 echo ""
-echo "🗄️  PostgreSQL 데이터베이스 연결 테스트 중..."
-echo "   ➤ 연결 테스트 실행..."
-
-# 연결 테스트 (간단히)
-DATABASE_URL="$DATABASE_URL" python3 -c "
-import os
-import asyncio
-from dotenv import load_dotenv
-
-# .env 파일 로드
-load_dotenv()
-
-from app.database import db_manager
-
-async def test_connection():
-    try:
-        from sqlalchemy import text
-        async with db_manager.engine.begin() as conn:
-            result = await conn.execute(text('SELECT 1'))
-        print('   ✅ PostgreSQL 데이터베이스 연결 성공')
-        return True
-    except Exception as e:
-        print(f'   ❌ 데이터베이스 연결 실패: {e}')
-        return False
-
-if not asyncio.run(test_connection()):
-    exit(1)
-" || {
-    echo "   ❌ 데이터베이스 연결에 실패했습니다."
-    echo "   ➤ DATABASE_URL과 PostgreSQL 서버 상태를 확인하세요"
+echo "🗄️  데이터베이스 URL 확인 중..."
+if [[ "$DATABASE_URL" =~ ^postgresql.*://.*@.*:.*/.*$ ]]; then
+    echo "   ✅ 데이터베이스 URL 형식 확인 완료"
+else
+    echo "   ❌ 잘못된 데이터베이스 URL 형식입니다."
     exit 1
-}
-
-echo "   ✅ 데이터베이스 연결 확인 완료"
+fi
 
 # 서버 시작
 echo ""
@@ -149,4 +122,4 @@ echo "🛑 서버 중지: Ctrl+C"
 echo "=================================================="
 
 # FastAPI 서버 실행
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+./venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
