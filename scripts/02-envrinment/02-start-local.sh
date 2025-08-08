@@ -102,6 +102,27 @@ else
     exit 1
 fi
 
+# 애플리케이션 모듈 import 검증
+echo ""
+echo "🔍 애플리케이션 모듈 import 검증 중..."
+echo "   ➤ Python import 테스트 실행..."
+./venv/bin/python -c "
+try:
+    import app.main
+    print('   ✅ 모든 모듈 import 성공')
+except ImportError as e:
+    print(f'   ❌ Import 오류 발견: {e}')
+    print('   ➤ 코드를 수정한 후 다시 시도하세요.')
+    exit(1)
+except Exception as e:
+    print(f'   ❌ 애플리케이션 로딩 오류: {e}')
+    exit(1)
+" || {
+    echo "   ❌ 애플리케이션 모듈 로딩에 실패했습니다."
+    echo "   ➤ 코드 오류를 수정한 후 다시 시도하세요."
+    exit 1
+}
+
 # 서버 시작
 echo ""
 echo "🌟 FastAPI 서버 시작 중..."
