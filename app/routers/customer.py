@@ -97,7 +97,6 @@ async def create_customer(request: CustomerCreateRequest, db: AsyncSession = Dep
             customer_id=str(customer.customer_id),
             user_id=customer.user_id,
             name=customer.name,
-            contact=customer.contact,
             affiliation=customer.affiliation,
             gender=customer.gender,
             date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
@@ -194,7 +193,6 @@ async def get_customer(
             customer_id=str(customer.customer_id),
             user_id=customer.user_id,
             name=customer.name,
-            contact=customer.contact,
             affiliation=customer.affiliation,
             gender=customer.gender,
             date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
@@ -426,7 +424,7 @@ async def list_customers(
         if search:
             search_conditions = [
                 Customer.name.ilike(f"%{search}%"),
-                Customer.contact.ilike(f"%{search}%"),
+                Customer.phone.ilike(f"%{search}%"),
                 Customer.affiliation.ilike(f"%{search}%"),
             ]
             from sqlalchemy import or_
@@ -473,8 +471,7 @@ async def list_customers(
                 customer_id=str(customer.customer_id),
                 user_id=customer.user_id,
                 name=customer.name,
-                contact=customer.contact,
-                affiliation=customer.affiliation,
+                    affiliation=customer.affiliation,
                     gender=customer.gender,
                 date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
                 interests=customer.interests or [],
@@ -711,7 +708,11 @@ async def upload_excel_file(
             failed_products=process_result["failed_products"],
             mapping_success_rate=process_result["mapping_success_rate"],
             processing_time_seconds=process_result["processing_time_seconds"],
-            processed_at=process_result["processed_at"]
+            processed_at=process_result["processed_at"],
+            
+            # 미리보기 데이터
+            original_data_preview=process_result.get("original_data_preview"),
+            processed_data_preview=process_result.get("processed_data_preview")
         )
         
     except HTTPException:

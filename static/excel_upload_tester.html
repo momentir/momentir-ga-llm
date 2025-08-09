@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>엑셀 업로드 LLM 정제 테스트 시스템</title>
+    <!-- SheetJS 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -449,7 +451,6 @@
                     <h4>🔍 지원하는 데이터 필드</h4>
                     <div class="field-list">
                         <div>• 고객이름 (name)</div>
-                        <div>• 연락처 (contact)</div>
                         <div>• 소속 (affiliation)</div>
                         <div>• 성별 (gender)</div>
                         <div>• 생년월일 (date_of_birth)</div>
@@ -508,7 +509,12 @@
         <!-- 결과 섹션 -->
         <div class="results-section">
             <div class="card">
-                <h2>📊 LLM 정제 결과</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>📊 LLM 정제 결과</h2>
+                    <button class="btn btn-success" id="download-excel-btn" onclick="downloadProcessedDataAsExcel()" style="display: none;">
+                        📁 현재 결과 엑셀 다운로드
+                    </button>
+                </div>
                 <div id="result-container">
                     <p style="color: #6c757d; text-align: center; padding: 40px;">
                         엑셀 파일을 업로드하고 LLM 정제를 실행하면 결과가 여기에 표시됩니다.
@@ -525,6 +531,9 @@
         // 프롬프트 관리용 전역 변수
         let savedPrompts = [];
         let currentPromptId = null;
+        
+        // 엑셀 다운로드용 전역 변수
+        let lastProcessedData = null;
 
         // 기본 컬럼 매핑 프롬프트
         const DEFAULT_MAPPING_PROMPT = `당신은 보험설계사의 고객 엑셀 데이터를 분석하는 전문가입니다.
@@ -532,7 +541,7 @@
 
 매핑 규칙:
 - 성명, 고객명, 이름, 고객이름 → name
-- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → contact 또는 phone (전화번호인 경우)
+- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → phone
 - 회사, 소속, 직장, 기관 → affiliation
 - 성별 → gender
 - 생년월일, 생일, 출생일 → date_of_birth
@@ -561,7 +570,106 @@
     "엑셀컬럼명": "표준필드명"
   },
   "confidence_score": 0.95
-}`;
+}
+
+휴대폰 번호
+
+한국 휴대폰 번호는 항상 010으로 시작하며 총 11자리 숫자다.
+엑셀 포맷으로 인해 맨 앞 0이 생략될 수 있으니, 10으로 시작하는 경우 앞에 0을 보정한 뒤 해석한다.
+휴대폰/전화 관련 컬럼은 모두 phone으로 매핑한다.
+
+성별
+
+성별은 반드시 ‘남자’ 또는 ‘여자’ 중 하나로만 해석·정규화한다(남/여, M/F 등은 각각 남자/여자로 변환 가정).
+
+생년월일
+
+YYYY-MM-DD 또는 YYYYMMDD 포맷으로 주어지는 경우가 많다.
+포맷에 구애받지 말고 날짜 의미를 인식해 date_of_birth로 매핑한다.
+
+우편번호
+
+대한민국 우편번호는 항상 숫자 5자리다. 이 패턴을 가진 컬럼은 주소 보조 정보로 인식한다(필드가 따로 없다면 address로 통합 가능).
+
+불필요/민감 데이터
+
+주민등록번호는 resident_number로 매핑하되, 마스킹 전제(예: 999999-1****)**로 다뤄야 한다.
+계좌번호·은행명은 각각 account_number, bank_name으로 매핑한다(숫자·하이픈 혼재 가능).
+
+출력 형식
+
+정확한 JSON만 응답. mapping 키는 “원본 컬럼명 → 표준 필드명” 딕셔너리여야 하고, 매핑 불가 항목은 "unmapped"로 표기한다.
+confidence_score(0~1)를 포함한다.
+
+name
+
+한글·영문 이름 필드(예: 성명, 고객명, 영문명 등)는 name으로 매핑. 이메일 주소나 회사명이 섞여 있으면 name으로 매핑하지 말 것.
+
+affiliation
+
+회사/기관/부서/직장명은 affiliation. 개인 주소와 혼동 금지.
+
+gender
+
+입력 변형(남/여, M/F, male/female)은 남자/여자로 정규화 가정.
+
+date_of_birth
+
+YYYY-MM-DD, YYYYMMDD, YYYY/MM/DD, YYYY.MM.DD 등 다양한 표기를 생년월일 의미면 date_of_birth로 매핑.
+나이(만 35세 등)만 있으면 unmapped로 두고, 별도 파생 로직 대상.
+
+interests
+
+쉼표·슬래시 구분 목록이면 리스트로 간주. 단일 문자열만 있으면 단일 항목 리스트로 가정 가능.
+
+life_events
+
+결혼/출산/이사/취업/승진/퇴직/자녀진학 등 이벤트성 텍스트는 life_events로. 날짜·메모가 함께 있으면 하나의 객체로 해석(가능하면 {event, date, note} 구조를 상정).
+
+insurance_products
+
+“보유/기존 보험” 같은 요약형은 insurance_products로. 구체 항목(상품명·가입금액·일자)이 분리돼 있으면 product 필드들로 각각 매핑.
+
+customer_type
+
+값은 **‘가입’ / ‘미가입’**만. 유사표현(가입자/무가입/잠재/관심)은 의미상 매핑하되 애매하면 unmapped.
+
+contact_channel
+
+허용값: 가족, 지역, 소개, 지역마케팅, 인바운드, 제휴db, 단체계약, 방카, 개척, 기타. 대소문자/공백/하이픈/혼용은 동의어로 인식.
+
+phone
+
+**휴대폰 번호(010 + 8자리)**를 phone으로 매핑.
+하이픈 유무와 공백은 무시(정규화 전제).
+
+resident_number
+
+13자리 숫자(하이픈 포함 가능)는 주민등록번호로 간주. LLM은 매핑만 하고, 마스킹은 서버에서 처리됨을 가정.
+
+address
+
+시/구/동/도로명/우편번호가 섞인 문자열은 address.
+우편번호(5자리 숫자)만 단독 컬럼이면 address 보조로 보되, 컬럼명·내용이 모호하면 unmapped.
+
+job_title
+
+직책/직무(과장, 대리, 엔지니어 등)는 job_title. 회사명과 혼동 금지(회사명=affiliation).
+
+bank_name / account_number
+
+은행명은 bank_name(국문/영문/약칭 모두 허용), 숫자 위주 문자열은 account_number.
+카드번호(16자리 패턴)는 account_number로 매핑하지 말 것(unmapped).
+
+referrer
+
+소개자/추천인/지인 이름은 referrer.
+
+notes
+
+위 어느 스키마에도 맞지 않는 자유 서술형 메모는 notes로.
+
+`;
 
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
@@ -1002,6 +1110,22 @@
                 progressFill.textContent = '완료!';
 
                 if (uploadResponse.ok) {
+                    // 콘솔에 원본 응답 출력 (디버깅용)
+                    console.log('🔍 Excel upload API 응답:', uploadResult);
+                    console.log('🔍 미리보기 데이터 확인:', {
+                        original_data_preview: uploadResult.original_data_preview,
+                        processed_data_preview: uploadResult.processed_data_preview
+                    });
+
+                    // 다운로드용 데이터 저장
+                    lastProcessedData = uploadResult.processed_data_preview;
+                    
+                    // 다운로드 버튼 표시
+                    const downloadBtn = document.getElementById('download-excel-btn');
+                    if (downloadBtn && uploadResult.processed_data_preview) {
+                        downloadBtn.style.display = 'inline-block';
+                    }
+
                     const uploadMessage = formatUploadResult(uploadResult);
                     const finalMessage = mappingMessage + '=== 2단계: LLM 엑셀 데이터 정제 결과 ===\n\n' + uploadMessage;
                     showResult(finalMessage, 'success');
@@ -1148,6 +1272,14 @@
 
         // 업로드 결과 포맷팅
         function formatUploadResult(result) {
+            // 미리보기 데이터 디버깅 로그
+            console.log('🔍 formatUploadResult - 미리보기 데이터 상태:', {
+                original_exists: !!result.original_data_preview,
+                processed_exists: !!result.processed_data_preview,
+                original_content: result.original_data_preview,
+                processed_content: result.processed_data_preview
+            });
+
             let message = '=== LLM 엑셀 데이터 정제 결과 ===\n\n';
             
             // 기본 통계
@@ -1166,6 +1298,78 @@
             
             if (result.processing_time_seconds) {
                 message += `⏱️  처리 시간: ${result.processing_time_seconds.toFixed(2)}초\n\n`;
+            }
+
+            // 원본 엑셀 데이터 미리보기
+            if (result.original_data_preview && result.original_data_preview.columns) {
+                message += `=== 📋 원본 엑셀 데이터 미리보기 ===\n`;
+                const originalData = result.original_data_preview;
+                message += `총 행 수: ${originalData.total_rows || 0}행\n`;
+                message += `총 컬럼 수: ${(originalData.columns || []).length}개\n\n`;
+                
+                if (originalData.columns && originalData.preview_rows) {
+                    message += `컬럼: ${originalData.columns.join(' | ')}\n`;
+                    message += `${'='.repeat(Math.min(originalData.columns.join(' | ').length, 80))}\n`;
+                    
+                    originalData.preview_rows.slice(0, 3).forEach((row, index) => {
+                        message += `${index + 1}: ${row.join(' | ')}\n`;
+                    });
+                    
+                    if (originalData.preview_rows.length > 3) {
+                        message += `... (${originalData.preview_rows.length - 3}개 행 더)\n`;
+                    }
+                }
+                message += '\n';
+            } else {
+                console.log('⚠️ 원본 데이터 미리보기를 사용할 수 없습니다:', result.original_data_preview);
+            }
+
+            // 처리된 데이터 미리보기
+            if (result.processed_data_preview && (result.processed_data_preview.customers || result.processed_data_preview.products)) {
+                message += `=== 🎯 처리된 데이터 미리보기 ===\n`;
+                const processedData = result.processed_data_preview;
+                
+                // 고객 데이터 (행렬 형태)
+                if (processedData.customers && processedData.customers.count > 0) {
+                    message += `👤 최근 생성된 고객 (${processedData.customers.count}명):\n`;
+                    message += `총 컬럼 수: ${(processedData.customers.columns || []).length}개\n\n`;
+                    
+                    if (processedData.customers.columns && processedData.customers.rows) {
+                        message += `컬럼: ${processedData.customers.columns.join(' | ')}\n`;
+                        message += `${'='.repeat(Math.min(processedData.customers.columns.join(' | ').length, 80))}\n`;
+                        
+                        processedData.customers.rows.slice(0, 5).forEach((row, index) => {
+                            message += `${index + 1}: ${row.join(' | ')}\n`;
+                        });
+                        
+                        if (processedData.customers.rows.length > 5) {
+                            message += `... (${processedData.customers.rows.length - 5}개 행 더)\n`;
+                        }
+                    }
+                    message += '\n';
+                }
+                
+                // 상품 데이터 (행렬 형태)
+                if (processedData.products && processedData.products.count > 0) {
+                    message += `🏦 최근 생성된 상품 (${processedData.products.count}개):\n`;
+                    message += `총 컬럼 수: ${(processedData.products.columns || []).length}개\n\n`;
+                    
+                    if (processedData.products.columns && processedData.products.rows) {
+                        message += `컬럼: ${processedData.products.columns.join(' | ')}\n`;
+                        message += `${'='.repeat(Math.min(processedData.products.columns.join(' | ').length, 80))}\n`;
+                        
+                        processedData.products.rows.slice(0, 5).forEach((row, index) => {
+                            message += `${index + 1}: ${row.join(' | ')}\n`;
+                        });
+                        
+                        if (processedData.products.rows.length > 5) {
+                            message += `... (${processedData.products.rows.length - 5}개 행 더)\n`;
+                        }
+                    }
+                    message += '\n';
+                }
+            } else {
+                console.log('⚠️ 처리된 데이터 미리보기를 사용할 수 없습니다:', result.processed_data_preview);
             }
 
             // 오류 정보
@@ -1223,6 +1427,69 @@
 
             container.innerHTML = '';
             container.appendChild(resultBox);
+        }
+        
+        // 처리된 데이터를 엑셀 파일로 다운로드
+        function downloadProcessedDataAsExcel() {
+            if (!lastProcessedData) {
+                alert('다운로드할 데이터가 없습니다. 먼저 엑셀 업로드를 실행해주세요.');
+                return;
+            }
+            
+            try {
+                // 새로운 워크북 생성
+                const wb = XLSX.utils.book_new();
+                
+                // 고객 데이터 시트 생성
+                if (lastProcessedData.customers && lastProcessedData.customers.rows.length > 0) {
+                    const customerData = [
+                        lastProcessedData.customers.columns, // 헤더
+                        ...lastProcessedData.customers.rows   // 데이터 행들
+                    ];
+                    const customerSheet = XLSX.utils.aoa_to_sheet(customerData);
+                    
+                    // 컬럼 너비 자동 조정
+                    const customerCols = lastProcessedData.customers.columns.map(() => ({ wch: 15 }));
+                    customerSheet['!cols'] = customerCols;
+                    
+                    XLSX.utils.book_append_sheet(wb, customerSheet, '고객 데이터');
+                }
+                
+                // 상품 데이터 시트 생성
+                if (lastProcessedData.products && lastProcessedData.products.rows.length > 0) {
+                    const productData = [
+                        lastProcessedData.products.columns, // 헤더
+                        ...lastProcessedData.products.rows   // 데이터 행들
+                    ];
+                    const productSheet = XLSX.utils.aoa_to_sheet(productData);
+                    
+                    // 컬럼 너비 자동 조정
+                    const productCols = lastProcessedData.products.columns.map(() => ({ wch: 15 }));
+                    productSheet['!cols'] = productCols;
+                    
+                    XLSX.utils.book_append_sheet(wb, productSheet, '가입상품 데이터');
+                }
+                
+                // 파일 이름 생성 (현재 날짜시간 포함)
+                const now = new Date();
+                const timestamp = now.getFullYear() + 
+                    String(now.getMonth() + 1).padStart(2, '0') + 
+                    String(now.getDate()).padStart(2, '0') + '_' +
+                    String(now.getHours()).padStart(2, '0') + 
+                    String(now.getMinutes()).padStart(2, '0') + 
+                    String(now.getSeconds()).padStart(2, '0');
+                    
+                const filename = `LLM정제결과_${timestamp}.xlsx`;
+                
+                // 엑셀 파일 다운로드
+                XLSX.writeFile(wb, filename);
+                
+                console.log(`✅ 엑셀 파일 다운로드 완료: ${filename}`);
+                
+            } catch (error) {
+                console.error('엑셀 다운로드 중 오류:', error);
+                alert('엑셀 다운로드 중 오류가 발생했습니다.');
+            }
         }
     </script>
 </body>

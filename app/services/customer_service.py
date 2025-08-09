@@ -18,6 +18,7 @@ import re
 import logging
 import time
 from collections import defaultdict
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,6 @@ class CustomerService:
         # 확장된 표준 고객 스키마 정의
         self.standard_schema = {
             "name": "고객 이름",
-            "contact": "연락처 (전화번호, 이메일 등)",
             "affiliation": "소속 (회사, 기관 등)",
             "gender": "성별",
             "date_of_birth": "생년월일",
@@ -88,69 +88,147 @@ class CustomerService:
         # 동적 프롬프트 로딩을 위한 설정
         self.use_dynamic_prompts = True
 
-    def validate_phone_format(self, phone: str) -> str:
-        """전화번호를 000-0000-0000 형식으로 변환합니다."""
-        if not phone or not isinstance(phone, str):
-            return phone
-        
-        # 숫자만 추출
-        digits = re.sub(r'\D', '', phone)
-        
-        # 휴대폰 번호 (11자리)
-        if len(digits) == 11:
-            return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
-        # 일반 전화번호 (10자리)
-        elif len(digits) == 10:
-            return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-        # 서울 번호 (9자리)
-        elif len(digits) == 9:
-            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
-        
-        return phone  # 형식에 맞지 않으면 원본 반환
+    def _digits_only(self, s: Optional[str]) -> str:
+        return re.sub(r'\D', '', s or '')
 
-    def mask_resident_number(self, resident_number: str) -> str:
-        """주민번호를 999999-1****** 형식으로 마스킹합니다."""
-        if not resident_number or not isinstance(resident_number, str):
-            return resident_number
-        
-        # 숫자만 추출
-        digits = re.sub(r'\D', '', resident_number)
-        
-        if len(digits) == 13:
-            return f"{digits[:6]}-{digits[6]}{'*' * 6}"
-        
-        return resident_number  # 형식에 맞지 않으면 원본 반환
+    def normalize_phone(self, phone: Optional[str]) -> Optional[str]:
+        """
+        한국 휴대폰 번호 강제 규칙:
+        - 항상 010으로 시작, 총 11자리
+        - 엑셀 포맷 이슈로 '0'이 빠진 '10xxxxxxxx' 형태면 앞에 '0'을 보정
+        - 형식 강제: 000-0000-0000
+        """
+        if not phone:
+            return None
+        digits = self._digits_only(phone)
 
-    def parse_date_formats(self, date_str: str) -> Optional[date]:
-        """다양한 날짜 형식을 파싱합니다."""
-        if not date_str or not isinstance(date_str, str):
+        # 선행 0 누락 보정(예: 10xxxxxxxx → 010xxxxxxxx)
+        if len(digits) == 10 and digits.startswith('10'):
+            digits = '0' + digits
+
+        if not (len(digits) == 11 and digits.startswith('010')):
+            # 강제 규칙에 맞지 않으면 None 반환(저장 회피) 또는 raise로 바꿀 수 있음
             return None
-        
-        date_str = date_str.strip()
-        if not date_str:
+
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+
+    def normalize_gender(self, gender: Optional[str]) -> Optional[str]:
+        """
+        성별 정규화:
+        - 남자 / 여자 중 하나로만 반환
+        - 허용 변형: 남/여, M/F, male/female 등
+        """
+        if not gender:
             return None
-        
-        # 시도할 날짜 형식들
-        formats = [
-            "%Y-%m-%d",
-            "%Y/%m/%d",
-            "%m/%d/%Y",
-            "%d/%m/%Y",
-            "%Y.%m.%d",
-            "%Y년 %m월 %d일",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y/%m/%d %H:%M:%S"
+        g = str(gender).strip().lower()
+        if g in {"남", "남자", "m", "male"}:
+            return "남자"
+        if g in {"여", "여자", "f", "female"}:
+            return "여자"
+        return None
+
+    def parse_date_formats(self, date_str: Optional[str]) -> Optional[date]:
+        """
+        날짜 파서(확장):
+        - YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD 등
+        - 반환: date (시간 제거)
+        """
+        if not isinstance(date_str, str):
+            return None
+        s = date_str.strip()
+        if not s:
+            return None
+
+        fmts = [
+            "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
+            "%Y%m%d",               # 추가
+            "%d/%m/%Y", "%m/%d/%Y",
+            "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"
         ]
-        
-        for fmt in formats:
+        for fmt in fmts:
             try:
-                parsed_date = datetime.strptime(date_str, fmt)
-                return parsed_date.date()
+                return datetime.strptime(s, fmt).date()
             except ValueError:
                 continue
-        
-        logger.warning(f"날짜 파싱 실패: {date_str}")
         return None
+
+    def normalize_date_to_datetime(self, val: Union[str, date, datetime, None]) -> Optional[datetime]:
+        """
+        입력이 str이면 위 parse_date_formats로 파싱 → datetime으로 변환
+        입력이 date면 00:00:00로 결합, datetime이면 그대로
+        """
+        if val is None:
+            return None
+        if isinstance(val, datetime):
+            return val
+        if isinstance(val, date):
+            return datetime.combine(val, datetime.min.time())
+        if isinstance(val, str):
+            d = self.parse_date_formats(val)
+            if d:
+                return datetime.combine(d, datetime.min.time())
+        return None
+
+    def normalize_postcode(self, postcode: Optional[str]) -> Optional[str]:
+        """
+        대한민국 우편번호: 숫자 5자리만 유효
+        """
+        if not postcode:
+            return None
+        digits = self._digits_only(postcode)
+        return digits if len(digits) == 5 else None
+
+    def normalize_customer_type(self, t: Optional[str]) -> Optional[str]:
+        """
+        고객유형: '가입' / '미가입'만 허용
+        """
+        if not t:
+            return None
+        s = str(t).strip().lower()
+        if s in {"가입", "가입자", "existing", "subscribed"}:
+            return "가입"
+        if s in {"미가입", "무가입", "비가입", "non", "nonsubscribed", "prospect"}:
+            return "미가입"
+        return None
+
+    def normalize_contact_channel(self, ch: Optional[str]) -> Optional[str]:
+        """
+        접점채널 허용 집합에 정규화. 모르면 '기타'
+        """
+        if not ch:
+            return None
+        s = str(ch).strip().lower().replace(" ", "")
+        mapping = {
+            "가족":"가족","지역":"지역","소개":"소개","지역마케팅":"지역마케팅",
+            "인바운드":"인바운드","제휴db":"제휴db","제휴DB":"제휴db","제휴":"제휴db",
+            "단체계약":"단체계약","방카":"방카","개척":"개척","기타":"기타"
+        }
+        return mapping.get(s, "기타")
+
+    def normalize_account_number(self, acc: Optional[str]) -> Optional[str]:
+        """
+        계좌번호: 공백 제거, 숫자/하이픈 외 제거.
+        카드번호(16자리 연속숫자)로 보이는 값은 None 처리(오인 방지).
+        """
+        if not acc:
+            return None
+        cleaned = re.sub(r"[^0-9\-]", "", acc)
+        digits = self._digits_only(cleaned)
+        if len(digits) == 16:
+            return None  # 카드번호로 오인 가능 값 방지
+        return cleaned or None
+
+    def mask_resident_number(self, resident_number: Optional[str]) -> Optional[str]:
+        """
+        주민번호 마스킹 강화: 13자리만 유효, 999999-1****** 포맷으로 반환
+        """
+        if not resident_number:
+            return None
+        digits = self._digits_only(resident_number)
+        if len(digits) != 13:
+            return None
+        return f"{digits[:6]}-{digits[6]}{'*' * 6}"
+
 
     def validate_policy_issued(self, value: str) -> bool:
         """증권교부여부를 불린으로 변환합니다."""
@@ -207,30 +285,21 @@ class CustomerService:
                 if not user:
                     raise Exception(f"설계사 ID {customer_data.user_id}를 찾을 수 없습니다.")
 
-            # 생년월일 처리
-            date_of_birth_dt = None
-            if customer_data.date_of_birth:
-                if isinstance(customer_data.date_of_birth, date):
-                    date_of_birth_dt = datetime.combine(customer_data.date_of_birth, datetime.min.time())
-                elif isinstance(customer_data.date_of_birth, str):
-                    try:
-                        parsed_date = datetime.strptime(customer_data.date_of_birth, "%Y-%m-%d")
-                        date_of_birth_dt = parsed_date
-                    except ValueError:
-                        pass
-
-            # 데이터 검증 적용
-            phone = self.validate_phone_format(customer_data.phone) if customer_data.phone else None
-            resident_number = self.mask_resident_number(customer_data.resident_number) if customer_data.resident_number else None
+            date_of_birth_dt = self.normalize_date_to_datetime(customer_data.date_of_birth)
+            phone = self.normalize_phone(customer_data.phone)
+            resident_number = self.mask_resident_number(customer_data.resident_number)
+            normalized_gender = self.normalize_gender(customer_data.gender)
+            customer_type = self.normalize_customer_type(customer_data.customer_type)
+            contact_channel = self.normalize_contact_channel(customer_data.contact_channel)
+            account_number = self.normalize_account_number(customer_data.account_number)
 
             # Customer 객체 생성 (모든 새로운 필드 포함)
             customer = Customer(
                 customer_id=uuid.uuid4(),
                 user_id=customer_data.user_id,
                 name=customer_data.name,
-                contact=customer_data.contact,
                 affiliation=customer_data.affiliation,
-                gender=customer_data.gender,
+                gender=normalized_gender,
                 date_of_birth=date_of_birth_dt,
                 interests=customer_data.interests or [],
                 life_events=customer_data.life_events or [],
@@ -319,17 +388,23 @@ class CustomerService:
 
             # 업데이트할 필드들 처리
             update_data = customer_data.model_dump(exclude_unset=True)
-            
+
             for field, value in update_data.items():
-                if field == "date_of_birth" and value:
-                    if isinstance(value, date):
-                        value = datetime.combine(value, datetime.min.time())
-                    elif isinstance(value, str):
-                        try:
-                            value = datetime.strptime(value, "%Y-%m-%d")
-                        except ValueError:
-                            continue
-                
+                if field == "date_of_birth":
+                    value = self.normalize_date_to_datetime(value)
+                elif field == "phone":
+                    value = self.normalize_phone(value)
+                elif field == "resident_number":
+                    value = self.mask_resident_number(value)
+                elif field == "gender":
+                    value = self.normalize_gender(value)
+                elif field == "customer_type":
+                    value = self.normalize_customer_type(value)
+                elif field == "contact_channel":
+                    value = self.normalize_contact_channel(value)
+                elif field == "account_number":
+                    value = self.normalize_account_number(value)
+
                 setattr(customer, field, value)
 
             await db_session.commit()
@@ -349,7 +424,7 @@ class CustomerService:
             # 검색 조건 구성
             search_conditions = [
                 Customer.name.ilike(f"%{query}%"),
-                Customer.contact.ilike(f"%{query}%"),
+                Customer.phone.ilike(f"%{query}%"),
                 Customer.affiliation.ilike(f"%{query}%"),
             ]
 
@@ -406,7 +481,7 @@ JSON 형식으로 응답해주세요:
 
 매핑 규칙:
 - 성명, 고객명, 이름, 고객이름 → name
-- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → contact 또는 phone (전화번호인 경우)
+- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → phone
 - 회사, 소속, 직장, 기관 → affiliation
 - 성별 → gender
 - 생년월일, 생일, 출생일 → date_of_birth
@@ -455,7 +530,105 @@ JSON 형식으로 응답해주세요:
     "소개자": "referrer"
   }},
   "confidence_score": 0.95
-}}"""
+}}
+
+휴대폰 번호
+
+한국 휴대폰 번호는 항상 010으로 시작하며 총 11자리 숫자다.
+엑셀 포맷으로 인해 맨 앞 0이 생략될 수 있으니, 10으로 시작하는 경우 앞에 0을 보정한 뒤 해석한다.
+휴대폰/전화 관련 컬럼은 모두 phone으로 매핑한다.
+
+성별
+
+성별은 반드시 ‘남자’ 또는 ‘여자’ 중 하나로만 해석·정규화한다(남/여, M/F 등은 각각 남자/여자로 변환 가정).
+
+생년월일
+
+YYYY-MM-DD 또는 YYYYMMDD 포맷으로 주어지는 경우가 많다.
+포맷에 구애받지 말고 날짜 의미를 인식해 date_of_birth로 매핑한다.
+
+우편번호
+
+대한민국 우편번호는 항상 숫자 5자리다. 이 패턴을 가진 컬럼은 주소 보조 정보로 인식한다(필드가 따로 없다면 address로 통합 가능).
+
+불필요/민감 데이터
+
+주민등록번호는 resident_number로 매핑하되, 마스킹 전제(예: 999999-1****)**로 다뤄야 한다.
+계좌번호·은행명은 각각 account_number, bank_name으로 매핑한다(숫자·하이픈 혼재 가능).
+
+출력 형식
+
+정확한 JSON만 응답. mapping 키는 “원본 컬럼명 → 표준 필드명” 딕셔너리여야 하고, 매핑 불가 항목은 "unmapped"로 표기한다.
+confidence_score(0~1)를 포함한다.
+
+name
+
+한글·영문 이름 필드(예: 성명, 고객명, 영문명 등)는 name으로 매핑. 이메일 주소나 회사명이 섞여 있으면 name으로 매핑하지 말 것.
+
+affiliation
+
+회사/기관/부서/직장명은 affiliation. 개인 주소와 혼동 금지.
+
+gender
+
+입력 변형(남/여, M/F, male/female)은 남자/여자로 정규화 가정.
+
+date_of_birth
+
+YYYY-MM-DD, YYYYMMDD, YYYY/MM/DD, YYYY.MM.DD 등 다양한 표기를 생년월일 의미면 date_of_birth로 매핑.
+나이(만 35세 등)만 있으면 unmapped로 두고, 별도 파생 로직 대상.
+
+interests
+
+쉼표·슬래시 구분 목록이면 리스트로 간주. 단일 문자열만 있으면 단일 항목 리스트로 가정 가능.
+
+life_events
+
+결혼/출산/이사/취업/승진/퇴직/자녀진학 등 이벤트성 텍스트는 life_events로. 날짜·메모가 함께 있으면 하나의 객체로 해석(가능하면 (event, date, note) 구조를 상정).
+
+insurance_products
+
+“보유/기존 보험” 같은 요약형은 insurance_products로. 구체 항목(상품명·가입금액·일자)이 분리돼 있으면 product 필드들로 각각 매핑.
+
+customer_type
+
+값은 **‘가입’ / ‘미가입’**만. 유사표현(가입자/무가입/잠재/관심)은 의미상 매핑하되 애매하면 unmapped.
+
+contact_channel
+
+허용값: 가족, 지역, 소개, 지역마케팅, 인바운드, 제휴db, 단체계약, 방카, 개척, 기타. 대소문자/공백/하이픈/혼용은 동의어로 인식.
+
+phone
+
+**휴대폰 번호(010 + 8자리)**를 phone으로 매핑.
+하이픈 유무와 공백은 무시(정규화 전제).
+
+resident_number
+
+13자리 숫자(하이픈 포함 가능)는 주민등록번호로 간주. LLM은 매핑만 하고, 마스킹은 서버에서 처리됨을 가정.
+
+address
+
+시/구/동/도로명/우편번호가 섞인 문자열은 address.
+우편번호(5자리 숫자)만 단독 컬럼이면 address 보조로 보되, 컬럼명·내용이 모호하면 unmapped.
+
+job_title
+
+직책/직무(과장, 대리, 엔지니어 등)는 job_title. 회사명과 혼동 금지(회사명=affiliation).
+
+bank_name / account_number
+
+은행명은 bank_name(국문/영문/약칭 모두 허용), 숫자 위주 문자열은 account_number.
+카드번호(16자리 패턴)는 account_number로 매핑하지 말 것(unmapped).
+
+referrer
+
+소개자/추천인/지인 이름은 referrer.
+
+notes
+
+위 어느 스키마에도 맞지 않는 자유 서술형 메모는 notes로.
+"""
 
             # 엑셀 업로드 전용 LangChain 클라이언트 사용
             excel_llm_client = get_excel_upload_llm_client()
@@ -667,7 +840,22 @@ JSON 형식으로 응답해주세요:
             
             logger.info(f"엑셀 데이터 처리 완료: {created_customers}명 생성, {updated_customers}명 업데이트, {created_products}개 상품 생성")
             
-            return {
+            # 데이터 미리보기 생성
+            try:
+                original_data_preview = self._generate_original_data_preview(df, column_mapping)
+                logger.info(f"원본 데이터 미리보기 생성됨: {len(original_data_preview.get('preview_rows', [])) if original_data_preview else 0} 행")
+            except Exception as e:
+                logger.error(f"원본 데이터 미리보기 생성 실패: {str(e)}")
+                original_data_preview = None
+                
+            try:
+                processed_data_preview = await self._generate_processed_data_preview(user_id, db_session)
+                logger.info(f"처리된 데이터 미리보기 생성됨: 고객 {processed_data_preview.get('customers', {}).get('count', 0)}명, 상품 {processed_data_preview.get('products', {}).get('count', 0)}개")
+            except Exception as e:
+                logger.error(f"처리된 데이터 미리보기 생성 실패: {str(e)}")
+                processed_data_preview = None
+            
+            result = {
                 "success": True,
                 "processed_rows": processed_rows,
                 "created_customers": created_customers,
@@ -678,8 +866,22 @@ JSON 형식으로 응답해주세요:
                 "failed_products": failed_products,
                 "mapping_success_rate": mapping_success_rate,
                 "processing_time_seconds": round(processing_time, 2),
-                "processed_at": datetime.now()
+                "processed_at": datetime.now(),
+                "original_data_preview": original_data_preview,
+                "processed_data_preview": processed_data_preview
             }
+            
+            # 미리보기 데이터 상태를 로그로 기록 (LangSmith에는 추적되지만 브라우저에서도 확인 가능)
+            preview_info = {
+                "original_preview_available": original_data_preview is not None,
+                "original_rows_count": len(original_data_preview.get('preview_rows', [])) if original_data_preview else 0,
+                "processed_preview_available": processed_data_preview is not None,
+                "processed_customers_count": processed_data_preview.get('customers', {}).get('count', 0) if processed_data_preview else 0,
+                "processed_products_count": processed_data_preview.get('products', {}).get('count', 0) if processed_data_preview else 0
+            }
+            logger.info(f"📊 미리보기 데이터 상태: {preview_info}")
+            
+            return result
 
         except Exception as e:
             logger.error(f"엑셀 데이터 처리 중 심각한 오류: {str(e)}")
@@ -722,11 +924,15 @@ JSON 형식으로 응답해주세요:
         
         # 전화번호 처리
         if field_name == "phone":
-            return self.validate_phone_format(str_value)
+            return self.normalize_phone(str_value)
         
         # 주민번호 처리
         elif field_name == "resident_number":
             return self.mask_resident_number(str_value)
+        
+        # 성별 처리
+        elif field_name == "gender":
+            return self.normalize_gender(str_value)
         
         # 날짜 필드 처리
         elif field_name in ["date_of_birth", "subscription_date", "expiry_renewal_date"]:
@@ -766,7 +972,7 @@ JSON 형식으로 응답해주세요:
         products_data = []
         
         # 고객 필드들
-        customer_fields = {'name', 'contact', 'affiliation', 'gender', 'date_of_birth',
+        customer_fields = {'name', 'affiliation', 'gender', 'date_of_birth',
                           'interests', 'life_events', 'insurance_products', 'customer_type', 
                           'contact_channel', 'phone', 'resident_number', 'address', 'job_title',
                           'bank_name', 'account_number', 'referrer', 'notes'}
@@ -1149,9 +1355,8 @@ JSON 형식으로 응답해주세요:
             if query:
                 search_conditions = [
                     Customer.name.ilike(f"%{query}%"),
-                    Customer.contact.ilike(f"%{query}%"),
-                    Customer.affiliation.ilike(f"%{query}%"),
                     Customer.phone.ilike(f"%{query}%"),
+                    Customer.affiliation.ilike(f"%{query}%"),
                     Customer.address.ilike(f"%{query}%")
                 ]
                 conditions.append(or_(*search_conditions))
@@ -1532,3 +1737,134 @@ JSON 형식으로 응답해주세요:
             recommendations.append("데이터 품질이 양호합니다.")
         
         return recommendations
+    
+    def _generate_original_data_preview(self, df: pd.DataFrame, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+        """원본 엑셀 데이터 미리보기 생성 (첫 5행)"""
+        try:
+            # 첫 5행만 추출 (헤더 포함하여 총 6행)
+            preview_df = df.head(5)
+            
+            # NaN 값을 빈 문자열로 변경
+            preview_df = preview_df.fillna('')
+            
+            # 컬럼명과 데이터를 포함한 미리보기 생성
+            preview_data = {
+                "columns": df.columns.tolist(),
+                "total_rows": len(df),
+                "preview_rows": preview_df.values.tolist(),
+                "column_mapping_applied": column_mapping,
+                "mapped_fields": [column_mapping.get(col, "unmapped") for col in df.columns],
+                "unmapped_columns": [col for col in df.columns if column_mapping.get(col, "unmapped") == "unmapped"]
+            }
+            
+            return preview_data
+            
+        except Exception as e:
+            logger.warning(f"원본 데이터 미리보기 생성 실패: {str(e)}")
+            return {
+                "columns": [],
+                "total_rows": 0,
+                "preview_rows": [],
+                "error": str(e)
+            }
+    
+    async def _generate_processed_data_preview(self, user_id: int, db_session: AsyncSession) -> Dict[str, Any]:
+        """처리된 고객/상품 데이터 미리보기 생성 (최신 10개)"""
+        try:
+            # 최근 생성된 고객 10명 조회
+            customers_stmt = select(Customer).where(
+                Customer.user_id == user_id
+            ).order_by(Customer.created_at.desc()).limit(10)
+            
+            customers_result = await db_session.execute(customers_stmt)
+            recent_customers = customers_result.scalars().all()
+            
+            # 고객 테이블 컬럼 순서 정의 (customer_id 제외, DB 테이블 구조 순서)
+            customer_columns = [
+                "name", "affiliation", "gender", "date_of_birth",
+                "interests", "life_events", "insurance_products", "created_at", "updated_at",
+                "user_id", "customer_type", "contact_channel", "phone", "resident_number", 
+                "address", "job_title", "bank_name", "account_number", "referrer", "notes"
+            ]
+            
+            # 고객 데이터를 행렬 형태로 변환
+            customers_rows = []
+            for customer in recent_customers:
+                row = []
+                for column in customer_columns:
+                    if column == "date_of_birth":
+                        value = customer.date_of_birth.isoformat() if customer.date_of_birth else ""
+                    elif column == "created_at":
+                        value = customer.created_at.isoformat()
+                    elif column == "updated_at":
+                        value = customer.updated_at.isoformat()
+                    elif column == "interests":
+                        value = str(customer.interests or [])
+                    elif column == "life_events":
+                        value = str(customer.life_events or [])
+                    elif column == "insurance_products":
+                        value = str(customer.insurance_products or [])
+                    else:
+                        value = getattr(customer, column, "") or ""
+                    row.append(str(value))
+                customers_rows.append(row)
+            
+            # 최근 생성된 상품 10개 조회
+            products_stmt = select(CustomerProduct).join(
+                Customer, CustomerProduct.customer_id == Customer.customer_id
+            ).where(
+                Customer.user_id == user_id
+            ).order_by(CustomerProduct.created_at.desc()).limit(10)
+            
+            products_result = await db_session.execute(products_stmt)
+            recent_products = products_result.scalars().all()
+            
+            # 상품 테이블 컬럼 순서 정의 (product_id는 제외)
+            product_columns = [
+                "customer_id", "product_name", "coverage_amount", "subscription_date", 
+                "expiry_renewal_date", "auto_transfer_date", "policy_issued", 
+                "created_at", "updated_at"
+            ]
+            
+            # 상품 데이터를 행렬 형태로 변환
+            products_rows = []
+            for product in recent_products:
+                row = []
+                for column in product_columns:
+                    if column == "customer_id":
+                        value = str(product.customer_id)
+                    elif column == "subscription_date":
+                        value = product.subscription_date.isoformat() if product.subscription_date else ""
+                    elif column == "expiry_renewal_date":
+                        value = product.expiry_renewal_date.isoformat() if product.expiry_renewal_date else ""
+                    elif column == "created_at":
+                        value = product.created_at.isoformat()
+                    elif column == "updated_at":
+                        value = product.updated_at.isoformat()
+                    elif column == "policy_issued":
+                        value = str(product.policy_issued) if product.policy_issued is not None else ""
+                    else:
+                        value = getattr(product, column, "") or ""
+                    row.append(str(value))
+                products_rows.append(row)
+            
+            return {
+                "customers": {
+                    "count": len(customers_rows),
+                    "columns": customer_columns,
+                    "rows": customers_rows
+                },
+                "products": {
+                    "count": len(products_rows),
+                    "columns": product_columns,
+                    "rows": products_rows
+                }
+            }
+            
+        except Exception as e:
+            logger.warning(f"처리된 데이터 미리보기 생성 실패: {str(e)}")
+            return {
+                "customers": {"count": 0, "columns": [], "rows": []},
+                "products": {"count": 0, "columns": [], "rows": []},
+                "error": str(e)
+            }

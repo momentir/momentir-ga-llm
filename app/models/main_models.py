@@ -92,7 +92,6 @@ class CustomerProductResponse(BaseModel):
 class CustomerCreateRequest(BaseModel):
     user_id: Optional[int] = Field(None, description="설계사 ID")
     name: Optional[str] = Field(None, description="고객 이름")
-    contact: Optional[str] = Field(None, description="연락처")
     affiliation: Optional[str] = Field(None, description="소속")
     gender: Optional[str] = Field(None, description="성별")
     date_of_birth: Optional[date] = Field(None, description="생년월일")
@@ -120,7 +119,6 @@ class CustomerResponse(BaseModel):
     customer_id: str = Field(..., description="고객 ID")
     user_id: Optional[int] = Field(None, description="설계사 ID")
     name: Optional[str] = Field(None, description="고객 이름")
-    contact: Optional[str] = Field(None, description="연락처")
     affiliation: Optional[str] = Field(None, description="소속")
     gender: Optional[str] = Field(None, description="성별")
     date_of_birth: Optional[date] = Field(None, description="생년월일")
@@ -149,7 +147,6 @@ class CustomerResponse(BaseModel):
 
 class CustomerUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="고객 이름")
-    contact: Optional[str] = Field(None, description="연락처")
     affiliation: Optional[str] = Field(None, description="소속")
     gender: Optional[str] = Field(None, description="성별")
     date_of_birth: Optional[date] = Field(None, description="생년월일")
@@ -182,6 +179,10 @@ class ExcelUploadResponse(BaseModel):
     # 처리 시간 정보
     processing_time_seconds: Optional[float] = Field(None, description="처리 시간 (초)")
     processed_at: datetime = Field(default_factory=datetime.now, description="처리 완료 시간")
+    
+    # 데이터 미리보기
+    original_data_preview: Optional[Dict[str, Any]] = Field(None, description="원본 엑셀 데이터 미리보기 (첫 5행)")
+    processed_data_preview: Optional[Dict[str, Any]] = Field(None, description="처리된 고객/상품 데이터 미리보기 (첫 5개)")
 
 
 class ColumnMappingRequest(BaseModel):
