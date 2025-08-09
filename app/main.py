@@ -89,6 +89,10 @@ app.include_router(prompts.router)
 from app.routers import prompt_logs
 app.include_router(prompt_logs.router)
 
+# LCEL SQL 파이프라인 라우터 추가
+from app.api import lcel_sql_routes
+app.include_router(lcel_sql_routes.router)
+
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -127,6 +131,11 @@ async def root():
             "auth_find_email": "/v1/auth/find-my-email",
             "auth_reset_password": "/v1/auth/reset-password",
             "auth_verify_email": "/v1/auth/verify-email-account",
+            "lcel_sql_generate": "/api/lcel-sql/generate",
+            "lcel_sql_streaming": "/api/lcel-sql/generate-streaming", 
+            "lcel_sql_execute": "/api/lcel-sql/execute-and-run",
+            "lcel_sql_strategies": "/api/lcel-sql/strategies",
+            "lcel_sql_health": "/api/lcel-sql/health",
             "docs": "/docs"
         }
     }

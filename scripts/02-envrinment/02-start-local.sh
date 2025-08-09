@@ -34,8 +34,8 @@ echo "   ✅ 가상환경 활성화 완료"
 # 의존성 설치
 echo ""
 echo "📦 의존성 설치 중..."
-./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install --quiet --upgrade pip
+./venv/bin/pip install --quiet -r requirements.txt
 echo "   ✅ 의존성 설치 완료"
 
 # 환경변수 설정 확인
@@ -105,7 +105,11 @@ fi
 # 애플리케이션 모듈 import 검증
 echo ""
 echo "🔍 애플리케이션 모듈 import 검증 중..."
-echo "   ➤ Python import 테스트 실행..."
+echo "   ➤ Python import 테스트 실행 (KoNLPy 비활성화)..."
+
+# Java 런타임 문제 방지를 위해 KoNLPy 임시 비활성화
+export DISABLE_KONLPY=true
+
 ./venv/bin/python -c "
 try:
     import app.main
@@ -116,12 +120,16 @@ except ImportError as e:
     exit(1)
 except Exception as e:
     print(f'   ❌ 애플리케이션 로딩 오류: {e}')
+    print('   ➤ Java 런타임 문제인 경우 KoNLPy가 자동으로 비활성화됩니다.')
     exit(1)
 " || {
     echo "   ❌ 애플리케이션 모듈 로딩에 실패했습니다."
     echo "   ➤ 코드 오류를 수정한 후 다시 시도하세요."
     exit 1
 }
+
+# import 검증 완료 후 KoNLPy 설정 복원 (사용자가 원하는 경우)
+unset DISABLE_KONLPY
 
 # 서버 시작
 echo ""
@@ -138,6 +146,12 @@ echo "   • 조건부 분석: POST /api/memo/analyze"
 echo "   • 고객 생성: POST /api/customer/create"
 echo "   • 엑셀 업로드: POST /api/customer/excel-upload"
 echo "   • 컬럼 매핑: POST /api/customer/column-mapping"
+echo ""
+echo "🆕 LCEL SQL 파이프라인:"
+echo "   • SQL 생성: POST /api/lcel-sql/generate"
+echo "   • 스트리밍 SQL: POST /api/lcel-sql/generate-streaming"
+echo "   • SQL 실행: POST /api/lcel-sql/execute-and-run"
+echo "   • 전략 목록: GET /api/lcel-sql/strategies"
 echo ""
 echo "🛑 서버 중지: Ctrl+C"
 echo "=================================================="

@@ -14,13 +14,36 @@ from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel, Field, ConfigDict
 
-# KoNLPy 한국어 형태소 분석기
-try:
-    from konlpy.tag import Okt, Kkma, Hannanum
-    KONLPY_AVAILABLE = True
-except ImportError:
-    KONLPY_AVAILABLE = False
-    logging.warning("KoNLPy가 설치되지 않았습니다. 기본 패턴 매칭을 사용합니다.")
+# KoNLPy 한국어 형태소 분석기 (지연 로딩)
+KONLPY_AVAILABLE = False
+_konlpy_checked = False
+
+def _check_konlpy_availability():
+    """KoNLPy 사용 가능 여부를 확인 (지연 초기화)"""
+    global KONLPY_AVAILABLE, _konlpy_checked
+    
+    if _konlpy_checked:
+        return KONLPY_AVAILABLE
+    
+    try:
+        # Java 런타임 문제를 방지하기 위해 환경 변수로 KoNLPy 비활성화 가능
+        import os
+        if os.getenv("DISABLE_KONLPY", "false").lower() == "true":
+            KONLPY_AVAILABLE = False
+            logging.info("KoNLPy가 환경변수로 비활성화되었습니다.")
+        else:
+            from konlpy.tag import Okt
+            # 간단한 테스트로 실제 작동 여부 확인
+            test_okt = Okt()
+            test_result = test_okt.pos("테스트", stem=True)
+            KONLPY_AVAILABLE = True
+            logging.info("KoNLPy 사용 가능 확인 완료")
+    except Exception as e:
+        KONLPY_AVAILABLE = False
+        logging.warning(f"KoNLPy 사용 불가: {e}. 기본 패턴 매칭을 사용합니다.")
+    
+    _konlpy_checked = True
+    return KONLPY_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -160,17 +183,11 @@ class KoreanIntentClassifier:
         Args:
             use_konlpy: KoNLPy 사용 여부 (False면 패턴 매칭만 사용)
         """
-        self.use_konlpy = use_konlpy and KONLPY_AVAILABLE
-        
-        # KoNLPy 형태소 분석기 초기화
-        if self.use_konlpy:
-            try:
-                self.okt = Okt()  # 빠르고 정확한 형태소 분석
-                self.kkma = None  # 필요시 사용 (느리지만 정확)
-                logger.info("✅ KoNLPy Okt 형태소 분석기 초기화 완료")
-            except Exception as e:
-                logger.warning(f"KoNLPy 초기화 실패: {e}, 패턴 매칭 사용")
-                self.use_konlpy = False
+        # KoNLPy는 실제 사용 시점에 지연 로딩
+        self.use_konlpy_preference = use_konlpy
+        self.use_konlpy = False  # 초기화 시점에서는 비활성화
+        self.okt = None  # 지연 초기화
+        self.kkma = None
         
         # 의도 분류를 위한 키워드 패턴들
         self.query_patterns = {
@@ -325,9 +342,34 @@ class KoreanIntentClassifier:
         
         return normalized
     
+    def _init_konlpy_if_needed(self):
+        """필요 시 KoNLPy 초기화"""
+        if not self.use_konlpy_preference:
+            return False
+            
+        if self.okt is not None:
+            return True  # 이미 초기화됨
+            
+        # KoNLPy 가용성 확인 및 초기화
+        if _check_konlpy_availability():
+            try:
+                from konlpy.tag import Okt
+                self.okt = Okt()
+                self.use_konlpy = True
+                logger.info("✅ KoNLPy Okt 형태소 분석기 지연 초기화 완료")
+                return True
+            except Exception as e:
+                logger.warning(f"KoNLPy 지연 초기화 실패: {e}")
+                self.use_konlpy = False
+                return False
+        else:
+            self.use_konlpy = False
+            return False
+
     async def _analyze_morphemes(self, query: str) -> List[Dict[str, str]]:
-        """KoNLPy를 이용한 형태소 분석"""
-        if not self.use_konlpy:
+        """KoNLPy를 이용한 형태소 분석 (지연 로딩)"""
+        # 실사용 시점에 KoNLPy 초기화 시도
+        if not self._init_konlpy_if_needed():
             return []
         
         try:
@@ -350,6 +392,8 @@ class KoreanIntentClassifier:
             
         except Exception as e:
             logger.warning(f"형태소 분석 실패: {e}")
+            # KoNLPy 사용 중 오류 발생시 비활성화
+            self.use_konlpy = False
             return []
     
     def _get_pos_meaning(self, pos: str) -> str:
