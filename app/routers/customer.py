@@ -299,7 +299,6 @@ async def update_customer(
             customer_id=str(updated_customer.customer_id),
             user_id=updated_customer.user_id,
             name=updated_customer.name,
-            contact=updated_customer.contact,
             affiliation=updated_customer.affiliation,
             gender=updated_customer.gender,
             date_of_birth=updated_customer.date_of_birth.date() if updated_customer.date_of_birth else None,
