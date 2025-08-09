@@ -491,8 +491,7 @@
                 </div>
 
                 <div class="form-group">
-                    <button class="btn btn-warning" onclick="testColumnMapping()" disabled id="mapping-test-btn">1. 컬럼 매핑 테스트</button>
-                    <button class="btn btn-success" id="upload-btn" onclick="uploadExcelFile()" disabled>2. LLM 정제 실행</button>
+                    <button class="btn btn-success" id="llm-test-btn" onclick="runLLMTest()" disabled>🚀 LLM 테스트 하기</button>
                     <button class="btn btn-secondary" onclick="clearFile()">🗑️ 파일 초기화</button>
                 </div>
 
@@ -629,8 +628,7 @@
             selectedFileDiv.style.display = 'block';
 
             // 버튼 활성화
-            document.getElementById('upload-btn').disabled = false;
-            document.getElementById('mapping-test-btn').disabled = false;
+            document.getElementById('llm-test-btn').disabled = false;
 
             showResult(`파일이 선택되었습니다: ${file.name}`, 'success');
         }
@@ -918,9 +916,116 @@
             selectedFile = null;
             document.getElementById('file-input').value = '';
             document.getElementById('selected-file').style.display = 'none';
-            document.getElementById('upload-btn').disabled = true;
-            document.getElementById('mapping-test-btn').disabled = true;
+            document.getElementById('llm-test-btn').disabled = true;
             showResult('선택된 파일이 초기화되었습니다.', 'success');
+        }
+
+        // LLM 테스트 하기 (컬럼 매핑 + LLM 정제 통합)
+        async function runLLMTest() {
+            if (!selectedFile) {
+                showResult('먼저 엑셀 파일을 선택해주세요.', 'error');
+                return;
+            }
+
+            const userId = document.getElementById('user-id').value;
+            if (!userId) {
+                showResult('설계사 ID를 입력해주세요.', 'error');
+                return;
+            }
+
+            const loadingEl = document.getElementById('upload-loading');
+            const statusEl = document.getElementById('upload-status');
+            const progressFill = document.getElementById('progress-fill');
+            
+            try {
+                // 1단계: 컬럼 매핑 테스트
+                statusEl.textContent = '1단계: LLM이 엑셀 컬럼을 분석하고 있습니다...';
+                loadingEl.classList.add('show');
+                progressFill.style.width = '25%';
+                progressFill.textContent = '25%';
+
+                const formData1 = new FormData();
+                formData1.append('file', selectedFile);
+                formData1.append('user_id', userId);
+
+                const customPrompt = document.getElementById('custom-prompt').value.trim();
+                if (customPrompt) {
+                    formData1.append('custom_prompt', customPrompt);
+                }
+
+                const mappingResponse = await fetch('/api/customer/column-mapping', {
+                    method: 'POST',
+                    body: formData1
+                });
+
+                const mappingResult = await mappingResponse.json();
+
+                if (!mappingResponse.ok) {
+                    showResult(`컬럼 매핑 오류: ${mappingResult.detail || '알 수 없는 오류가 발생했습니다.'}`, 'error');
+                    return;
+                }
+
+                // 컬럼 매핑 결과 표시
+                const mappingMessage = `=== 1단계: 컬럼 매핑 분석 결과 ===\n${JSON.stringify(mappingResult, null, 2)}\n\n`;
+                showResult(mappingMessage, 'success');
+
+                // 2단계: LLM 정제 실행
+                statusEl.textContent = '2단계: LLM이 엑셀 데이터를 정제하고 있습니다...';
+                progressFill.style.width = '50%';
+                progressFill.textContent = '50%';
+
+                // 진행률 시뮬레이션 시작
+                simulateProgress();
+
+                const formData2 = new FormData();
+                formData2.append('file', selectedFile);
+                formData2.append('user_id', userId);
+
+                const testMode = document.getElementById('test-mode').value;
+                if (testMode !== 'standard') {
+                    formData2.append('test_mode', testMode);
+                }
+
+                if (customPrompt) {
+                    formData2.append('custom_prompt', customPrompt);
+                }
+
+                const uploadResponse = await fetch('/api/customer/excel-upload', {
+                    method: 'POST',
+                    body: formData2
+                });
+
+                const uploadResult = await uploadResponse.json();
+
+                // 진행률 100% 완료
+                progressFill.style.width = '100%';
+                progressFill.textContent = '완료!';
+
+                if (uploadResponse.ok) {
+                    const uploadMessage = formatUploadResult(uploadResult);
+                    const finalMessage = mappingMessage + '=== 2단계: LLM 엑셀 데이터 정제 결과 ===\n\n' + uploadMessage;
+                    showResult(finalMessage, 'success');
+                        const resultEl = document.getElementById('result-container');
+                        if (resultEl) {
+                          resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          resultEl.setAttribute('tabindex', '-1');
+                          resultEl.focus({ preventScroll: true });
+                        }
+                } else {
+                    const errorMessage = mappingMessage + `\n=== 2단계 오류 ===\n오류: ${uploadResult.detail || '알 수 없는 오류가 발생했습니다.'}`;
+                    showResult(errorMessage, 'error');
+                }
+
+            } catch (error) {
+                showResult(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                setTimeout(() => {
+                    loadingEl.classList.remove('show');
+                    progressFill.style.width = '0%';
+                    progressFill.textContent = '0%';
+                    uploadProgress = 0;
+                }, 1000);
+            }
         }
 
         // 컬럼 매핑 테스트
@@ -1118,9 +1223,6 @@
 
             container.innerHTML = '';
             container.appendChild(resultBox);
-            
-            // 결과 섹션으로 스크롤
-            resultBox.scrollIntoView({ behavior: 'smooth' });
         }
     </script>
 </body>
