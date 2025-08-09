@@ -34,6 +34,8 @@ from app.services.nl_search_service import (
     NLSearchRequest,
     NLSearchResponse
 )
+from app.services.search_cache_service import search_cache_service
+from app.services.search_formatter import search_formatter, HighlightOptions
 from app.utils.langsmith_config import trace_llm_call
 from app.database import read_only_db_manager
 
@@ -364,7 +366,9 @@ async def natural_language_search(
     search_context: Annotated[Dict[str, Any], Depends(get_search_context)],
     auth_info: Annotated[Dict[str, Any], Depends(get_auth_info)],
     has_permission: Annotated[bool, Depends(validate_search_permissions)],
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    use_cache: Annotated[bool, Query(description="캐시 사용 여부")] = True,
+    enable_highlighting: Annotated[bool, Query(description="검색어 하이라이팅 활성화")] = True
 ) -> NaturalLanguageSearchResponse:
     """자연어 검색 메인 엔드포인트"""
     
@@ -378,7 +382,44 @@ async def natural_language_search(
     start_time = datetime.now()
     
     try:
-        logger.info(f"🔍 자연어 검색 시작 [{request_id}]: {request_data.query}")
+        logger.info(f"🔍 자연어 검색 시작 [{request_id}]: {request_data.query} (캐시={use_cache}, 하이라이팅={enable_highlighting})")
+        
+        # 1. 캐시 조회 (사용 설정 시)
+        if use_cache:
+            cache_context = {
+                "context": request_data.context,
+                "auth_info": {k: v for k, v in auth_info.items() if k != "token"},  # 토큰은 캐시 키에서 제외
+                "limit": request_data.limit
+            }
+            
+            cached_result = await search_cache_service.get_cached_result(
+                query=request_data.query,
+                context=cache_context,
+                options=request_data.options.model_dump()
+            )
+            
+            if cached_result:
+                logger.info(f"✅ 캐시 히트 [{request_id}]: 캐시된 결과 반환")
+                
+                # 캐시된 응답에 요청 ID 업데이트
+                cached_result.update({
+                    "request_id": request_id,
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # 하이라이팅 처리 (캐시된 결과에도 적용)
+                if enable_highlighting and cached_result.get("data"):
+                    highlight_options = HighlightOptions(case_sensitive=False, whole_words_only=False)
+                    cached_result["data"] = search_formatter.highlight_search_results(
+                        cached_result["data"], 
+                        request_data.query,
+                        highlight_options
+                    )
+                
+                return NaturalLanguageSearchResponse(**cached_result)
+        
+        # 2. 캐시 미스 - 실제 검색 수행
+        logger.info(f"❌ 캐시 미스 [{request_id}]: 새로운 검색 수행")
         
         # LCEL 파이프라인 요청 생성
         pipeline_request = EnhancedSQLGenerationRequest(
@@ -423,29 +464,63 @@ async def natural_language_search(
                 detail=f"데이터베이스 실행 오류: {str(db_error)}"
             )
         
-        # 응답 생성
-        response = NaturalLanguageSearchResponse(
-            request_id=request_id,
-            query=request_data.query,
-            intent=SearchIntent(
-                intent_type=pipeline_result.intent_analysis.get("query_type", {}).get("main_type", "unknown"),
-                confidence=pipeline_result.intent_analysis.get("query_type", {}).get("confidence", 0.0),
-                keywords=pipeline_result.intent_analysis.get("intent_keywords", []),
-                entities=pipeline_result.intent_analysis.get("entities", {})
-            ),
-            execution=SearchExecution(
-                sql_query=pipeline_result.sql_result.sql,
-                parameters=pipeline_result.sql_result.parameters,
-                execution_time_ms=execution_time,
-                rows_affected=len(data),
-                strategy_used=pipeline_result.sql_result.generation_method
-            ),
-            data=data,
-            total_rows=len(data),
-            success=True
-        )
+        # 3. 결과 포맷팅 (하이라이팅)
+        formatted_data = data
+        if enable_highlighting and data:
+            highlight_options = HighlightOptions(case_sensitive=False, whole_words_only=False)
+            formatted_data = search_formatter.highlight_search_results(
+                data, 
+                request_data.query,
+                highlight_options
+            )
+            logger.debug(f"하이라이팅 처리 완료 [{request_id}]: {len(formatted_data)}행")
         
-        # 백그라운드에서 메트릭 저장
+        # 4. 응답 생성
+        response_data = {
+            "request_id": request_id,
+            "query": request_data.query,
+            "intent": {
+                "intent_type": pipeline_result.intent_analysis.get("query_type", {}).get("main_type", "unknown"),
+                "confidence": pipeline_result.intent_analysis.get("query_type", {}).get("confidence", 0.0),
+                "keywords": pipeline_result.intent_analysis.get("intent_keywords", []),
+                "entities": pipeline_result.intent_analysis.get("entities", {})
+            },
+            "execution": {
+                "sql_query": pipeline_result.sql_result.sql,
+                "parameters": pipeline_result.sql_result.parameters,
+                "execution_time_ms": execution_time,
+                "rows_affected": len(data),
+                "strategy_used": pipeline_result.sql_result.generation_method
+            },
+            "data": formatted_data,
+            "total_rows": len(data),
+            "success": True,
+            "formatting_applied": enable_highlighting,
+            "cache_info": {
+                "cached": False,
+                "cache_enabled": use_cache
+            }
+        }
+        
+        response = NaturalLanguageSearchResponse(**response_data)
+        
+        # 5. 캐시 저장 (백그라운드)
+        if use_cache:
+            cache_context = {
+                "context": request_data.context,
+                "auth_info": {k: v for k, v in auth_info.items() if k != "token"},
+                "limit": request_data.limit
+            }
+            background_tasks.add_task(
+                _cache_search_result,
+                request_data.query,
+                response_data,
+                cache_context,
+                request_data.options.model_dump(),
+                int(execution_time)
+            )
+        
+        # 6. 백그라운드에서 메트릭 저장
         background_tasks.add_task(
             _log_search_metrics,
             request_id,
@@ -723,6 +798,33 @@ async def _handle_streaming_search(message: Dict[str, Any], client_id: str):
         }, client_id)
 
 
+async def _cache_search_result(
+    query: str,
+    result: Dict[str, Any],
+    context: Dict[str, Any],
+    options: Dict[str, Any],
+    execution_time_ms: int
+):
+    """검색 결과 캐시 저장 (백그라운드 작업)"""
+    try:
+        success = await search_cache_service.cache_search_result(
+            query=query,
+            result=result,
+            context=context,
+            options=options,
+            execution_time_ms=execution_time_ms,
+            ttl_minutes=5  # 5분 TTL
+        )
+        
+        if success:
+            logger.debug(f"✅ 검색 결과 캐시 저장 성공: {query[:50]}...")
+        else:
+            logger.warning(f"❌ 검색 결과 캐시 저장 실패: {query[:50]}...")
+            
+    except Exception as e:
+        logger.error(f"캐시 저장 백그라운드 작업 실패: {e}")
+
+
 async def _log_search_metrics(
     request_id: str,
     query: str,
@@ -746,6 +848,157 @@ async def _log_search_metrics(
         
     except Exception as e:
         logger.error(f"메트릭 로깅 실패: {e}")
+
+
+# 캐시 관련 추가 엔드포인트들
+@router.get(
+    "/cache/statistics",
+    response_model=Dict[str, Any],
+    summary="캐시 통계",
+    description="PostgreSQL 기반 검색 캐시의 상세 통계를 반환합니다."
+)
+async def get_cache_statistics() -> Dict[str, Any]:
+    """캐시 통계 조회"""
+    try:
+        stats = await search_cache_service.get_cache_statistics()
+        logger.info("캐시 통계 조회 완료")
+        return stats
+    except Exception as e:
+        logger.error(f"캐시 통계 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"캐시 통계 조회 중 오류: {str(e)}"
+        )
+
+
+@router.get(
+    "/popular-queries",
+    response_model=List[Dict[str, Any]],
+    summary="인기 검색어",
+    description="사용자들이 자주 검색하는 인기 검색어 목록을 반환합니다."
+)
+async def get_popular_queries(
+    limit: Annotated[int, Query(ge=1, le=100, description="반환할 항목 수")] = 20,
+    min_searches: Annotated[int, Query(ge=1, description="최소 검색 수")] = 2,
+    days: Annotated[int, Query(ge=1, le=365, description="분석 기간 (일)")] = 30
+) -> List[Dict[str, Any]]:
+    """인기 검색어 조회"""
+    try:
+        popular_queries = await search_cache_service.get_popular_queries(
+            limit=limit,
+            min_searches=min_searches,
+            days=days
+        )
+        
+        logger.info(f"인기 검색어 조회: {len(popular_queries)}개 반환")
+        return popular_queries
+        
+    except Exception as e:
+        logger.error(f"인기 검색어 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"인기 검색어 조회 중 오류: {str(e)}"
+        )
+
+
+@router.get(
+    "/cache/suggest",
+    response_model=List[Dict[str, Any]],
+    summary="검색어 자동완성",
+    description="입력한 검색어와 유사한 캐시된 검색어들을 제안합니다."
+)
+async def search_suggestion(
+    q: Annotated[str, Query(..., min_length=1, max_length=100, description="검색할 용어")],
+    limit: Annotated[int, Query(ge=1, le=20, description="반환할 제안 수")] = 10
+) -> List[Dict[str, Any]]:
+    """검색어 자동완성"""
+    try:
+        suggestions = await search_cache_service.search_cached_queries(
+            search_term=q,
+            limit=limit
+        )
+        
+        logger.debug(f"검색어 자동완성: '{q}' → {len(suggestions)}개 제안")
+        return suggestions
+        
+    except Exception as e:
+        logger.error(f"검색어 자동완성 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"자동완성 조회 중 오류: {str(e)}"
+        )
+
+
+@router.delete(
+    "/cache/invalidate",
+    response_model=Dict[str, Any],
+    summary="캐시 무효화",
+    description="특정 패턴이나 전체 검색 캐시를 무효화합니다."
+)
+async def invalidate_cache(
+    query: Annotated[Optional[str], Query(description="특정 쿼리 (정확 매치)")] = None,
+    pattern: Annotated[Optional[str], Query(description="쿼리 패턴 (부분 매치)")] = None,
+    all_cache: Annotated[bool, Query(description="전체 캐시 무효화")] = False
+) -> Dict[str, Any]:
+    """캐시 무효화"""
+    try:
+        if all_cache:
+            deleted_count = await search_cache_service.invalidate_cache()
+        elif query:
+            deleted_count = await search_cache_service.invalidate_cache(query=query)
+        elif pattern:
+            deleted_count = await search_cache_service.invalidate_cache(pattern=pattern)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="query, pattern, 또는 all_cache=true 중 하나를 지정해야 합니다"
+            )
+        
+        logger.info(f"캐시 무효화 완료: {deleted_count}개 항목 삭제")
+        
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "message": f"{deleted_count}개의 캐시 항목이 삭제되었습니다.",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"캐시 무효화 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"캐시 무효화 중 오류: {str(e)}"
+        )
+
+
+@router.post(
+    "/cache/cleanup",
+    response_model=Dict[str, Any],
+    summary="만료된 캐시 정리",
+    description="만료된 캐시 항목들을 정리합니다. (일반적으로 자동 실행됨)"
+)
+async def cleanup_expired_cache() -> Dict[str, Any]:
+    """만료된 캐시 정리"""
+    try:
+        cleaned_count = await search_cache_service.cleanup_expired_cache()
+        
+        logger.info(f"만료된 캐시 정리 완료: {cleaned_count}개 확인")
+        
+        return {
+            "success": True,
+            "cleaned_count": cleaned_count,
+            "message": f"만료된 캐시 정리 완료 ({cleaned_count}개 확인됨)",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"캐시 정리 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"캐시 정리 중 오류: {str(e)}"
+        )
 
 
 # 라우터에 추가 메타데이터 설정
