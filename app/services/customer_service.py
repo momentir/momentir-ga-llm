@@ -58,7 +58,6 @@ class CustomerService:
             "name": "고객 이름",
             "contact": "연락처 (전화번호, 이메일 등)",
             "affiliation": "소속 (회사, 기관 등)",
-            "occupation": "직업",
             "gender": "성별",
             "date_of_birth": "생년월일",
             "interests": "관심사 (리스트)",
@@ -231,7 +230,6 @@ class CustomerService:
                 name=customer_data.name,
                 contact=customer_data.contact,
                 affiliation=customer_data.affiliation,
-                occupation=customer_data.occupation,
                 gender=customer_data.gender,
                 date_of_birth=date_of_birth_dt,
                 interests=customer_data.interests or [],
@@ -353,7 +351,6 @@ class CustomerService:
                 Customer.name.ilike(f"%{query}%"),
                 Customer.contact.ilike(f"%{query}%"),
                 Customer.affiliation.ilike(f"%{query}%"),
-                Customer.occupation.ilike(f"%{query}%")
             ]
 
             stmt = select(Customer).where(
@@ -747,7 +744,7 @@ JSON 형식으로 응답해주세요:
         products_data = []
         
         # 고객 필드들
-        customer_fields = {'name', 'contact', 'affiliation', 'occupation', 'gender', 'date_of_birth',
+        customer_fields = {'name', 'contact', 'affiliation', 'gender', 'date_of_birth',
                           'interests', 'life_events', 'insurance_products', 'customer_type', 
                           'contact_channel', 'phone', 'resident_number', 'address', 'job_title',
                           'bank_name', 'account_number', 'referrer', 'notes'}
@@ -1132,7 +1129,6 @@ JSON 형식으로 응답해주세요:
                     Customer.name.ilike(f"%{query}%"),
                     Customer.contact.ilike(f"%{query}%"),
                     Customer.affiliation.ilike(f"%{query}%"),
-                    Customer.occupation.ilike(f"%{query}%"),
                     Customer.phone.ilike(f"%{query}%"),
                     Customer.address.ilike(f"%{query}%")
                 ]

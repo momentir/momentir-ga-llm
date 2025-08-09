@@ -42,7 +42,6 @@ CUSTOMER_RESPONSE=$(curl -s -X POST "${SERVER_URL}/api/customer/create" \
   -d '{
     "name": "김테스트",
     "contact": "010-1234-5678",
-    "occupation": "개발자",
     "gender": "남성",
     "interests": ["IT", "보험"],
     "insurance_products": [

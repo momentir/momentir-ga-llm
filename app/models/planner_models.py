@@ -43,7 +43,6 @@ class BasicInfo(BaseModel):
     age: Optional[int] = Field(None, description="나이")
     gender: Optional[str] = Field(None, description="성별")
     contact: Optional[str] = Field(None, description="연락처")
-    occupation: Optional[str] = Field(None, description="직업")
     income_level: Optional[str] = Field(None, description="소득 수준")
     family_status: Optional[str] = Field(None, description="가족 상황")
 
@@ -165,7 +164,6 @@ class PlannerInput(BaseModel):
                         "age": 35,
                         "gender": "남성",
                         "contact": "010-1234-5678",
-                        "occupation": "IT 엔지니어",
                         "income_level": "중상",
                         "family_status": "기혼"
                     },

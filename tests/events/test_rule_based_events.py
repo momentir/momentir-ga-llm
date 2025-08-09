@@ -19,7 +19,6 @@ def create_test_customers():
         {
             "name": "김철수",
             "contact": "010-1234-5678",
-            "occupation": "회사원",
             "gender": "남성",
             "date_of_birth": "1985-12-25",  # 곧 다가올 생일
             "interests": ["건강관리", "투자"],
@@ -42,7 +41,6 @@ def create_test_customers():
         {
             "name": "이영희",
             "contact": "010-9876-5432",
-            "occupation": "자영업",
             "gender": "여성",
             "date_of_birth": "1990-03-15",
             "interests": ["여행", "건강"],
@@ -59,7 +57,6 @@ def create_test_customers():
         {
             "name": "박민수",
             "contact": "010-5555-7777",
-            "occupation": "프리랜서",
             "gender": "남성",
             "date_of_birth": "1988-08-10",  # 곧 다가올 생일
             "interests": ["기술", "교육"],

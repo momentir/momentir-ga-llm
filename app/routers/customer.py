@@ -32,7 +32,6 @@ async def create_customer(request: CustomerCreateRequest, db: AsyncSession = Dep
     - **name**: 고객 이름
     - **contact**: 연락처 (전화번호, 이메일 등)
     - **affiliation**: 소속 (회사, 기관 등)
-    - **occupation**: 직업
     - **gender**: 성별
     - **date_of_birth**: 생년월일 (YYYY-MM-DD)
     - **interests**: 관심사 리스트
@@ -100,7 +99,6 @@ async def create_customer(request: CustomerCreateRequest, db: AsyncSession = Dep
             name=customer.name,
             contact=customer.contact,
             affiliation=customer.affiliation,
-            occupation=customer.occupation,
             gender=customer.gender,
             date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
             interests=customer.interests or [],
@@ -198,7 +196,6 @@ async def get_customer(
             name=customer.name,
             contact=customer.contact,
             affiliation=customer.affiliation,
-            occupation=customer.occupation,
             gender=customer.gender,
             date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
             interests=customer.interests or [],
@@ -248,7 +245,7 @@ async def update_customer(
     - 요청 본문에 업데이트할 필드들 포함
     
     ## 지원 필드:
-    - 기존 필드: name, contact, affiliation, occupation, gender, date_of_birth, interests, life_events, insurance_products
+    - 기존 필드: name, contact, affiliation, gender, date_of_birth, interests, life_events, insurance_products
     - 확장 필드: customer_type, contact_channel, phone, resident_number, address, job_title, bank_name, account_number, referrer, notes
     
     ## 기능:
@@ -306,7 +303,6 @@ async def update_customer(
             name=updated_customer.name,
             contact=updated_customer.contact,
             affiliation=updated_customer.affiliation,
-            occupation=updated_customer.occupation,
             gender=updated_customer.gender,
             date_of_birth=updated_customer.date_of_birth.date() if updated_customer.date_of_birth else None,
             interests=updated_customer.interests or [],
@@ -432,7 +428,6 @@ async def list_customers(
                 Customer.name.ilike(f"%{search}%"),
                 Customer.contact.ilike(f"%{search}%"),
                 Customer.affiliation.ilike(f"%{search}%"),
-                Customer.occupation.ilike(f"%{search}%")
             ]
             from sqlalchemy import or_
             base_query = base_query.where(or_(*search_conditions))
@@ -480,8 +475,7 @@ async def list_customers(
                 name=customer.name,
                 contact=customer.contact,
                 affiliation=customer.affiliation,
-                occupation=customer.occupation,
-                gender=customer.gender,
+                    gender=customer.gender,
                 date_of_birth=customer.date_of_birth.date() if customer.date_of_birth else None,
                 interests=customer.interests or [],
                 life_events=customer.life_events or [],

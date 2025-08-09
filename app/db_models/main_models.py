@@ -39,7 +39,6 @@ class Customer(Base):
     name = Column(String(100), nullable=True, comment="고객 이름")
     contact = Column(String(50), nullable=True, comment="연락처")
     affiliation = Column(String(200), nullable=True, comment="소속")
-    occupation = Column(String(100), nullable=True, comment="직업")
     gender = Column(String(10), nullable=True, comment="성별")
     date_of_birth = Column(DateTime, nullable=True, comment="생년월일")
     interests = Column(JSONB, nullable=True, comment="관심사")

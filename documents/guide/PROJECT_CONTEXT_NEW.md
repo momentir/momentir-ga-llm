@@ -238,7 +238,6 @@ CREATE TABLE customers (
                           name VARCHAR(100),
                           contact VARCHAR(50),
                           affiliation VARCHAR(200),
-                          occupation VARCHAR(100),
                           gender VARCHAR(10),
                           date_of_birth DATE,
                           interests JSONB,

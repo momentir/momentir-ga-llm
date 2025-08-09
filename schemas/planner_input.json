@@ -6,7 +6,6 @@
       "age": "number",
       "gender": "string",
       "contact": "string",
-      "occupation": "string",
       "income_level": "string",
       "family_status": "string"
     },

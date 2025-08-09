@@ -594,7 +594,6 @@ class MemoRefinerService:
                     customer_data = {
                         "name": customer_record.name,
                         "age": self._calculate_age(customer_record.date_of_birth) if customer_record.date_of_birth else None,
-                        "occupation": customer_record.occupation,
                         "gender": customer_record.gender,
                         "interests": customer_record.interests or [],
                         "life_events": customer_record.life_events or [],
@@ -835,7 +834,6 @@ class MemoRefinerService:
                 customer_info_text = f"""
 고객명: {customer_data.get('name', '미상')}
 나이: {customer_data.get('age', '미상')}세
-직업: {customer_data.get('occupation', '미상')}
 성별: {customer_data.get('gender', '미상')}
 관심사: {', '.join(customer_data.get('interests', []))}
 인생 이벤트: {customer_data.get('life_events', [])}
@@ -951,7 +949,6 @@ class MemoRefinerService:
                 },
                 "customer_profile": {
                     "age": self._calculate_age(customer.date_of_birth),
-                    "occupation": customer.occupation,
                     "interests_count": len(customer.interests or []),
                     "insurance_products_count": len(customer.insurance_products or [])
                 }
