@@ -39,20 +39,21 @@ class SearchType(str, Enum):
 
 class NLSearchRequest(BaseModel):
     """자연어 검색 요청 스키마"""
-    model_config = ConfigDict(str_strip_whitespace=True)
     
     query: str = Field(..., description="자연어 검색 쿼리", min_length=1, max_length=1000)
     context: Optional[Dict[str, Any]] = Field(default=None, description="검색 컨텍스트 정보")
     limit: Optional[int] = Field(default=100, ge=1, le=100, description="결과 제한 수")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        json_schema_extra={
             "example": {
                 "query": "지난 달 가입한 고객들의 메모를 보여주세요",
                 "context": {"user_id": "123"},
                 "limit": 50
             }
         }
+    )
 
 
 class IntentAnalysisResult(BaseModel):
@@ -75,8 +76,8 @@ class SQLGenerationResult(BaseModel):
     explanation: str = Field(..., description="쿼리 설명")
     estimated_complexity: str = Field(..., description="예상 복잡도 (low/medium/high)")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "sql": "SELECT * FROM customers WHERE created_at >= :start_date",
                 "parameters": {"start_date": "2024-01-01"},
@@ -84,6 +85,7 @@ class SQLGenerationResult(BaseModel):
                 "estimated_complexity": "low"
             }
         }
+    )
 
 
 class NLSearchResponse(BaseModel):
@@ -98,8 +100,8 @@ class NLSearchResponse(BaseModel):
     success: bool = Field(default=True)
     error_message: Optional[str] = Field(default=None)
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "intent_analysis": {
                     "intent": "customer_info",
@@ -120,6 +122,7 @@ class NLSearchResponse(BaseModel):
                 "success": True
             }
         }
+    )
 
 
 class NaturalLanguageSearchService:

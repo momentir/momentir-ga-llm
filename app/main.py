@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
-from app.routers import memo, customer, events, prompts, auth
+from app.routers import memo, customer, events, prompts, auth, search
 from app.database import db_manager
 from app.utils.langsmith_config import langsmith_manager
 from dotenv import load_dotenv
@@ -84,6 +84,7 @@ app.include_router(memo.router)
 app.include_router(customer.router)
 app.include_router(events.router)
 app.include_router(prompts.router)
+app.include_router(search.router)
 
 # 프롬프트 테스트 로그 라우터 추가
 from app.routers import prompt_logs
@@ -136,6 +137,10 @@ async def root():
             "lcel_sql_execute": "/api/lcel-sql/execute-and-run",
             "lcel_sql_strategies": "/api/lcel-sql/strategies",
             "lcel_sql_health": "/api/lcel-sql/health",
+            "natural_language_search": "/api/search/natural-language",
+            "search_strategies": "/api/search/strategies",
+            "search_health": "/api/search/health",
+            "search_websocket": "/ws/search/stream",
             "docs": "/docs"
         }
     }
