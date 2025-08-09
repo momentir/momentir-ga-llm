@@ -405,32 +405,54 @@ JSON 형식으로 응답해주세요:
 엑셀 컬럼: {excel_columns}
 
 매핑 규칙:
-- 성명, 고객명, 이름 → customer_name
-- 핸드폰, 전화번호, 연락처 → phone  
+- 성명, 고객명, 이름, 고객이름 → name
+- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → contact 또는 phone (전화번호인 경우)
+- 회사, 소속, 직장, 기관 → affiliation
+- 성별 → gender
+- 생년월일, 생일, 출생일 → date_of_birth
+- 관심사, 취미, 관심분야 → interests
+- 인생이벤트, 생활이벤트, 이벤트 → life_events
+- 보험상품정보, 기존보험, 보유보험 → insurance_products
 - 분류, 유형, 고객유형 → customer_type
 - 경로, 접점, 채널 → contact_channel
+- 핸드폰, 전화번호, 휴대폰 → phone (전화번호 전용)
+- 주민등록번호, 주민번호 → resident_number
 - 거주지, 주소 → address
 - 직장, 직업 → job_title
-- 주민등록번호, 주민번호 → resident_number
-- 보험상품, 상품명, 가입상품 → product_name
+- 보험상품, 상품명, 가입상품, 보험명 → product_name
 - 보장액, 가입금액, 보장금액 → coverage_amount
 - 계약일, 가입일 → subscription_date
+- 갱신일, 만료일, 종료일 → expiry_renewal_date
+- 이체일, 납입일 → auto_transfer_date
 - 증권발급, 증권교부 → policy_issued
+- 은행, 계좌은행 → bank_name
+- 계좌, 계좌번호 → account_number
+- 소개자, 추천인 → referrer
 
 정확히 JSON 형식으로만 응답해주세요:
 {{
   "mapping": {{
-    "성명": "customer_name",
-    "핸드폰": "phone",
+    "성명": "name",
+    "전화번호": "phone",
+    "회사": "affiliation",
+    "성별": "gender",
+    "생년월일": "date_of_birth",
+    "관심사": "interests",
+    "인생이벤트": "life_events",
+    "보험상품정보": "insurance_products",
     "분류": "customer_type",
     "경로": "contact_channel",
     "거주지": "address",
     "직장": "job_title",
-    "주민등록번호": "resident_number",
     "보험상품": "product_name",
     "보장액": "coverage_amount",
     "계약일": "subscription_date",
-    "증권발급": "policy_issued"
+    "갱신일": "expiry_renewal_date",
+    "이체일": "auto_transfer_date",
+    "증권발급": "policy_issued",
+    "은행": "bank_name",
+    "계좌": "account_number",
+    "소개자": "referrer"
   }},
   "confidence_score": 0.95
 }}"""

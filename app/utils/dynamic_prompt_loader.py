@@ -198,26 +198,46 @@ async def get_column_mapping_prompt(excel_columns: list, standard_schema: dict, 
     # 폴백: 하드코딩된 프롬프트
     if not prompt:
         logger.warning("Dynamic column mapping prompt not found, using fallback")
-        return f"""당신은 엑셀 컬럼명을 표준 고객 스키마로 매핑하는 전문가입니다.
+        return f"""당신은 보험설계사의 고객 엑셀 데이터를 분석하는 전문가입니다.
+주어진 엑셀 컬럼들을 표준 필드와 정확히 매핑해주세요.
 
 표준 스키마:
 {standard_schema}
 
-엑셀 컬럼명들을 표준 스키마로 매핑해주세요:
-
 엑셀 컬럼: {excel_columns}
 
-각 엑셀 컬럼이 어떤 표준 필드에 해당하는지 매핑하고,
-매핑할 수 없는 컬럼은 'unmapped'로 표시하세요.
+매핑 규칙:
+- 성명, 고객명, 이름, 고객이름 → name
+- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → contact 또는 phone (전화번호인 경우)
+- 회사, 소속, 직장, 기관 → affiliation
+- 성별 → gender
+- 생년월일, 생일, 출생일 → date_of_birth
+- 관심사, 취미, 관심분야 → interests
+- 인생이벤트, 생활이벤트, 이벤트 → life_events
+- 보험상품정보, 기존보험, 보유보험 → insurance_products
+- 분류, 유형, 고객유형 → customer_type
+- 경로, 접점, 채널 → contact_channel
+- 핸드폰, 전화번호, 휴대폰 → phone (전화번호 전용)
+- 주민등록번호, 주민번호 → resident_number
+- 거주지, 주소 → address
+- 직장, 직업 → job_title
+- 보험상품, 상품명, 가입상품, 보험명 → product_name
+- 보장액, 가입금액, 보장금액 → coverage_amount
+- 계약일, 가입일 → subscription_date
+- 갱신일, 만료일, 종료일 → expiry_renewal_date
+- 이체일, 납입일 → auto_transfer_date
+- 증권발급, 증권교부 → policy_issued
+- 은행, 계좌은행 → bank_name
+- 계좌, 계좌번호 → account_number
+- 소개자, 추천인 → referrer
 
-JSON 형식으로 응답해주세요:
+정확히 JSON 형식으로만 응답해주세요:
 {{
-  "mappings": {{
+  "mapping": {{
     "엑셀컬럼명": "표준필드명",
     "매핑불가컬럼": "unmapped"
   }},
-  "confidence": 0.95,
-  "suggestions": ["매핑 개선 제안"]
+  "confidence_score": 0.95
 }}"""
     
     return prompt

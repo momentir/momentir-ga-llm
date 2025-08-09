@@ -448,7 +448,14 @@
                 <div class="supported-fields">
                     <h4>🔍 지원하는 데이터 필드</h4>
                     <div class="field-list">
-                        <div>• 고객이름 (customer_name)</div>
+                        <div>• 고객이름 (name)</div>
+                        <div>• 연락처 (contact)</div>
+                        <div>• 소속 (affiliation)</div>
+                        <div>• 성별 (gender)</div>
+                        <div>• 생년월일 (date_of_birth)</div>
+                        <div>• 관심사 (interests)</div>
+                        <div>• 인생이벤트 (life_events)</div>
+                        <div>• 보험상품정보 (insurance_products)</div>
                         <div>• 고객유형 (customer_type)</div>
                         <div>• 접점채널 (contact_channel)</div>
                         <div>• 전화번호 (phone)</div>
@@ -525,13 +532,20 @@
 주어진 엑셀 컬럼들을 표준 필드와 정확히 매핑해주세요.
 
 매핑 규칙:
-- 성명, 고객명, 이름, 고객이름 → customer_name
-- 핸드폰, 전화번호, 연락처, 전화 → phone  
+- 성명, 고객명, 이름, 고객이름 → name
+- 전화, 연락처, 핸드폰, 핸드폰번호, 전화번호 → contact 또는 phone (전화번호인 경우)
+- 회사, 소속, 직장, 기관 → affiliation
+- 성별 → gender
+- 생년월일, 생일, 출생일 → date_of_birth
+- 관심사, 취미, 관심분야 → interests
+- 인생이벤트, 생활이벤트, 이벤트 → life_events
+- 보험상품정보, 기존보험, 보유보험 → insurance_products
 - 분류, 유형, 고객유형 → customer_type
 - 경로, 접점, 채널 → contact_channel
+- 핸드폰, 전화번호, 휴대폰 → phone (전화번호 전용)
+- 주민등록번호, 주민번호 → resident_number
 - 거주지, 주소 → address
 - 직장, 직업 → job_title
-- 주민등록번호, 주민번호 → resident_number
 - 보험상품, 상품명, 가입상품, 보험명 → product_name
 - 보장액, 가입금액, 보장금액 → coverage_amount
 - 계약일, 가입일 → subscription_date
