@@ -449,6 +449,33 @@ class CustomerService:
             logger.info(f"엑셀 컬럼 매핑 시작: {excel_columns}")
             start_time = time.time()
             
+            # 이미 표준화된 컬럼명인지 확인
+            standard_field_names = set(self.standard_schema.keys())
+            matched_columns = [col for col in excel_columns if col in standard_field_names]
+            
+            # 80% 이상의 컬럼이 표준 필드명과 일치하면 1:1 매핑 사용
+            if len(matched_columns) / len(excel_columns) >= 0.8:
+                logger.info(f"📋 표준화된 엑셀 파일 감지: {len(matched_columns)}/{len(excel_columns)}개 컬럼 일치")
+                
+                # 1:1 매핑 생성
+                mapping = {}
+                for col in excel_columns:
+                    if col in standard_field_names:
+                        mapping[col] = col  # 동일한 컬럼명으로 매핑
+                    else:
+                        mapping[col] = "unmapped"  # 표준 필드가 아닌 것은 unmapped
+                
+                unmapped_columns = [col for col, field in mapping.items() if field == "unmapped"]
+                
+                end_time = time.time()
+                logger.info(f"✅ 1:1 매핑 완료: {len(matched_columns)}개 매핑, {len(unmapped_columns)}개 unmapped")
+                
+                return {
+                    "mapping": mapping,
+                    "unmapped_columns": unmapped_columns,
+                    "confidence_score": 0.98  # 1:1 매핑은 높은 신뢰도
+                }
+            
             # 프롬프트 결정
             if custom_prompt:
                 # 사용자 제공 커스텀 프롬프트 사용

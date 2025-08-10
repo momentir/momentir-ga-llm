@@ -512,7 +512,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>📊 LLM 정제 결과</h2>
                     <button class="btn btn-success" id="download-excel-btn" onclick="downloadProcessedDataAsExcel()" style="display: none;">
-                        📁 현재 결과 엑셀 다운로드
+                        📁 기존 고객 데이터 다운로드
                     </button>
                 </div>
                 <div id="result-container">
@@ -1430,19 +1430,29 @@ notes
             container.appendChild(resultBox);
         }
         
-        // 처리된 데이터를 엑셀 파일로 다운로드
+        // LLM 정제된 데이터를 엑셀 파일로 다운로드
         function downloadProcessedDataAsExcel() {
             if (!lastProcessedData) {
                 alert('다운로드할 데이터가 없습니다. 먼저 엑셀 업로드를 실행해주세요.');
                 return;
             }
             
+            // 미리보기 데이터(LLM 정제 결과) 확인 - 실제 고객 생성 여부와 관계없이 처리
+            const hasCustomerData = lastProcessedData.customers && lastProcessedData.customers.rows && lastProcessedData.customers.rows.length > 0;
+            const hasProductData = lastProcessedData.products && lastProcessedData.products.rows && lastProcessedData.products.rows.length > 0;
+            
+            if (!hasCustomerData && !hasProductData) {
+                alert('다운로드 가능한 데이터가 없습니다.\n\n미리보기 데이터가 존재하지 않습니다.\n해당 설계사의 기존 고객 데이터나 상품 데이터가 없는 것 같습니다.');
+                return;
+            }
+            
             try {
                 // 새로운 워크북 생성
                 const wb = XLSX.utils.book_new();
+                let sheetsCreated = 0;
                 
-                // 고객 데이터 시트 생성
-                if (lastProcessedData.customers && lastProcessedData.customers.rows.length > 0) {
+                // 고객 데이터 시트 생성 (설계사의 기존 최신 고객 데이터)
+                if (hasCustomerData) {
                     const customerData = [
                         lastProcessedData.customers.columns, // 헤더
                         ...lastProcessedData.customers.rows   // 데이터 행들
@@ -1453,11 +1463,12 @@ notes
                     const customerCols = lastProcessedData.customers.columns.map(() => ({ wch: 15 }));
                     customerSheet['!cols'] = customerCols;
                     
-                    XLSX.utils.book_append_sheet(wb, customerSheet, '고객 데이터');
+                    XLSX.utils.book_append_sheet(wb, customerSheet, '기존 고객 데이터 (최신10명)');
+                    sheetsCreated++;
                 }
                 
-                // 상품 데이터 시트 생성
-                if (lastProcessedData.products && lastProcessedData.products.rows.length > 0) {
+                // 상품 데이터 시트 생성 (설계사의 기존 최신 상품 데이터)
+                if (hasProductData) {
                     const productData = [
                         lastProcessedData.products.columns, // 헤더
                         ...lastProcessedData.products.rows   // 데이터 행들
@@ -1468,7 +1479,15 @@ notes
                     const productCols = lastProcessedData.products.columns.map(() => ({ wch: 15 }));
                     productSheet['!cols'] = productCols;
                     
-                    XLSX.utils.book_append_sheet(wb, productSheet, '가입상품 데이터');
+                    XLSX.utils.book_append_sheet(wb, productSheet, '기존 상품 데이터 (최신10개)');
+                    sheetsCreated++;
+                }
+                
+                // 빈 워크북 방지 - 최소 하나의 시트는 생성
+                if (sheetsCreated === 0) {
+                    // 빈 시트라도 생성
+                    const emptySheet = XLSX.utils.aoa_to_sheet([['해당 설계사의 기존 데이터가 없습니다']]);
+                    XLSX.utils.book_append_sheet(wb, emptySheet, '데이터 없음');
                 }
                 
                 // 파일 이름 생성 (현재 날짜시간 포함)
@@ -1480,7 +1499,7 @@ notes
                     String(now.getMinutes()).padStart(2, '0') + 
                     String(now.getSeconds()).padStart(2, '0');
                     
-                const filename = `LLM정제결과_${timestamp}.xlsx`;
+                const filename = `기존고객데이터_${timestamp}.xlsx`;
                 
                 // 엑셀 파일 다운로드
                 XLSX.writeFile(wb, filename);
