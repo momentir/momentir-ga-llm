@@ -512,7 +512,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>📊 LLM 정제 결과</h2>
                     <button class="btn btn-success" id="download-excel-btn" onclick="downloadProcessedDataAsExcel()" style="display: none;">
-                        📁 기존 고객 데이터 다운로드
+                        📁 엑셀 정제 결과 다운로드
                     </button>
                 </div>
                 <div id="result-container">
@@ -1442,7 +1442,7 @@ notes
             const hasProductData = lastProcessedData.products && lastProcessedData.products.rows && lastProcessedData.products.rows.length > 0;
             
             if (!hasCustomerData && !hasProductData) {
-                alert('다운로드 가능한 데이터가 없습니다.\n\n미리보기 데이터가 존재하지 않습니다.\n해당 설계사의 기존 고객 데이터나 상품 데이터가 없는 것 같습니다.');
+                alert('다운로드 가능한 데이터가 없습니다.\n\n엑셀 파일에서 정제된 고객이나 상품 데이터가 없습니다.');
                 return;
             }
             
@@ -1451,7 +1451,7 @@ notes
                 const wb = XLSX.utils.book_new();
                 let sheetsCreated = 0;
                 
-                // 고객 데이터 시트 생성 (설계사의 기존 최신 고객 데이터)
+                // 고객 데이터 시트 생성 (이번 엑셀에서 정제된 고객 데이터)
                 if (hasCustomerData) {
                     const customerData = [
                         lastProcessedData.customers.columns, // 헤더
@@ -1463,11 +1463,11 @@ notes
                     const customerCols = lastProcessedData.customers.columns.map(() => ({ wch: 15 }));
                     customerSheet['!cols'] = customerCols;
                     
-                    XLSX.utils.book_append_sheet(wb, customerSheet, '기존 고객 데이터 (최신10명)');
+                    XLSX.utils.book_append_sheet(wb, customerSheet, '정제된 고객 데이터');
                     sheetsCreated++;
                 }
                 
-                // 상품 데이터 시트 생성 (설계사의 기존 최신 상품 데이터)
+                // 상품 데이터 시트 생성 (이번 엑셀에서 정제된 상품 데이터)
                 if (hasProductData) {
                     const productData = [
                         lastProcessedData.products.columns, // 헤더
@@ -1479,14 +1479,14 @@ notes
                     const productCols = lastProcessedData.products.columns.map(() => ({ wch: 15 }));
                     productSheet['!cols'] = productCols;
                     
-                    XLSX.utils.book_append_sheet(wb, productSheet, '기존 상품 데이터 (최신10개)');
+                    XLSX.utils.book_append_sheet(wb, productSheet, '정제된 상품 데이터');
                     sheetsCreated++;
                 }
                 
                 // 빈 워크북 방지 - 최소 하나의 시트는 생성
                 if (sheetsCreated === 0) {
                     // 빈 시트라도 생성
-                    const emptySheet = XLSX.utils.aoa_to_sheet([['해당 설계사의 기존 데이터가 없습니다']]);
+                    const emptySheet = XLSX.utils.aoa_to_sheet([['엑셀 파일에서 정제된 데이터가 없습니다']]);
                     XLSX.utils.book_append_sheet(wb, emptySheet, '데이터 없음');
                 }
                 
@@ -1499,7 +1499,7 @@ notes
                     String(now.getMinutes()).padStart(2, '0') + 
                     String(now.getSeconds()).padStart(2, '0');
                     
-                const filename = `기존고객데이터_${timestamp}.xlsx`;
+                const filename = `엑셀정제결과_${timestamp}.xlsx`;
                 
                 // 엑셀 파일 다운로드
                 XLSX.writeFile(wb, filename);

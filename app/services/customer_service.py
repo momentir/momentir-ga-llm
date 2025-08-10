@@ -774,6 +774,10 @@ notes
         # 고객별 데이터 그룹화 (여러 행에 걸친 동일 고객 처리)
         customer_groups = defaultdict(list)
         
+        # 처리된 고객과 상품들을 추적 (미리보기 데이터 생성용)
+        processed_customers = []  # 이번 엑셀 처리로 생성/수정된 고객들
+        processed_products = []   # 이번 엑셀 처리로 생성된 상품들
+        
         try:
             # 설계사 존재 확인
             user_stmt = select(User).where(User.id == user_id)
@@ -825,6 +829,9 @@ notes
                         customer = await self._create_new_customer(merged_customer_data, db_session)
                         created_customers += 1
                     
+                    # 처리된 고객 추적에 추가
+                    processed_customers.append(customer)
+                    
                     # 가입상품 처리
                     product_results = await self._process_customer_products(
                         customer, products_data, db_session
@@ -835,6 +842,10 @@ notes
                     
                     if product_results['errors']:
                         errors.extend(product_results['errors'])
+                    
+                    # 처리된 상품들 추적에 추가
+                    if product_results.get('created_products_list'):
+                        processed_products.extend(product_results['created_products_list'])
                         
                 except Exception as e:
                     errors.append(f"고객 {customer_key} 처리 오류: {str(e)}")
@@ -859,7 +870,7 @@ notes
                 original_data_preview = None
                 
             try:
-                processed_data_preview = await self._generate_processed_data_preview(user_id, db_session)
+                processed_data_preview = self._generate_processed_data_preview_from_lists(processed_customers, processed_products)
                 logger.info(f"처리된 데이터 미리보기 생성됨: 고객 {processed_data_preview.get('customers', {}).get('count', 0)}명, 상품 {processed_data_preview.get('products', {}).get('count', 0)}개")
             except Exception as e:
                 logger.error(f"처리된 데이터 미리보기 생성 실패: {str(e)}")
@@ -1072,7 +1083,8 @@ notes
             'total': len(products_data),
             'created': 0,
             'failed': 0,
-            'errors': []
+            'errors': [],
+            'created_products_list': []  # 생성된 상품 객체들을 추적
         }
         
         for product_data in products_data:
@@ -1093,6 +1105,7 @@ notes
                 
                 db_session.add(product)
                 results['created'] += 1
+                results['created_products_list'].append(product)  # 생성된 상품을 리스트에 추가
                 
             except Exception as e:
                 results['failed'] += 1
@@ -1781,17 +1794,9 @@ notes
                 "error": str(e)
             }
     
-    async def _generate_processed_data_preview(self, user_id: int, db_session: AsyncSession) -> Dict[str, Any]:
-        """처리된 고객/상품 데이터 미리보기 생성 (최신 10개)"""
+    def _generate_processed_data_preview_from_lists(self, processed_customers: List, processed_products: List) -> Dict[str, Any]:
+        """이번 엑셀 처리로 생성/수정된 고객과 상품 데이터만으로 미리보기 생성"""
         try:
-            # 최근 생성된 고객 10명 조회
-            customers_stmt = select(Customer).where(
-                Customer.user_id == user_id
-            ).order_by(Customer.created_at.desc()).limit(10)
-            
-            customers_result = await db_session.execute(customers_stmt)
-            recent_customers = customers_result.scalars().all()
-            
             # 고객 테이블 컬럼 순서 정의 (customer_id 제외, DB 테이블 구조 순서)
             customer_columns = [
                 "name", "affiliation", "gender", "date_of_birth",
@@ -1802,7 +1807,7 @@ notes
             
             # 고객 데이터를 행렬 형태로 변환
             customers_rows = []
-            for customer in recent_customers:
+            for customer in processed_customers:
                 row = []
                 for column in customer_columns:
                     if column == "date_of_birth":
@@ -1822,16 +1827,6 @@ notes
                     row.append(str(value))
                 customers_rows.append(row)
             
-            # 최근 생성된 상품 10개 조회
-            products_stmt = select(CustomerProduct).join(
-                Customer, CustomerProduct.customer_id == Customer.customer_id
-            ).where(
-                Customer.user_id == user_id
-            ).order_by(CustomerProduct.created_at.desc()).limit(10)
-            
-            products_result = await db_session.execute(products_stmt)
-            recent_products = products_result.scalars().all()
-            
             # 상품 테이블 컬럼 순서 정의 (product_id는 제외)
             product_columns = [
                 "customer_id", "product_name", "coverage_amount", "subscription_date", 
@@ -1841,7 +1836,7 @@ notes
             
             # 상품 데이터를 행렬 형태로 변환
             products_rows = []
-            for product in recent_products:
+            for product in processed_products:
                 row = []
                 for column in product_columns:
                     if column == "customer_id":
@@ -1873,6 +1868,38 @@ notes
                     "rows": products_rows
                 }
             }
+            
+        except Exception as e:
+            logger.warning(f"처리된 데이터 미리보기 생성 실패: {str(e)}")
+            return {
+                "customers": {"count": 0, "columns": [], "rows": []},
+                "products": {"count": 0, "columns": [], "rows": []},
+                "error": str(e)
+            }
+    
+    async def _generate_processed_data_preview(self, user_id: int, db_session: AsyncSession) -> Dict[str, Any]:
+        """처리된 고객/상품 데이터 미리보기 생성 (최신 10개) - 기존 메소드 유지 (하위 호환성)"""
+        try:
+            # 최근 생성된 고객 10명 조회
+            customers_stmt = select(Customer).where(
+                Customer.user_id == user_id
+            ).order_by(Customer.created_at.desc()).limit(10)
+            
+            customers_result = await db_session.execute(customers_stmt)
+            recent_customers = customers_result.scalars().all()
+            
+            # 최근 생성된 상품 10개 조회
+            products_stmt = select(CustomerProduct).join(
+                Customer, CustomerProduct.customer_id == Customer.customer_id
+            ).where(
+                Customer.user_id == user_id
+            ).order_by(CustomerProduct.created_at.desc()).limit(10)
+            
+            products_result = await db_session.execute(products_stmt)
+            recent_products = products_result.scalars().all()
+            
+            # 새 메소드를 이용해서 처리
+            return self._generate_processed_data_preview_from_lists(recent_customers, recent_products)
             
         except Exception as e:
             logger.warning(f"처리된 데이터 미리보기 생성 실패: {str(e)}")
