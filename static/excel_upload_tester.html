@@ -1094,11 +1094,12 @@ notes
                     formData2.append('test_mode', testMode);
                 }
 
-                if (customPrompt) {
-                    formData2.append('custom_prompt', customPrompt);
+                // 1단계에서 얻은 컬럼 매핑 결과를 2단계로 전달
+                if (mappingResult && mappingResult.mapping) {
+                    formData2.append('column_mapping_json', JSON.stringify(mappingResult.mapping));
                 }
 
-                const uploadResponse = await fetch('/api/customer/excel-upload', {
+                const uploadResponse = await fetch('/api/customer/excel-upload?auto_map=false', {
                     method: 'POST',
                     body: formData2
                 });

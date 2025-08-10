@@ -452,19 +452,7 @@ class CustomerService:
             # 프롬프트 결정
             if custom_prompt:
                 # 사용자 제공 커스텀 프롬프트 사용
-                user_prompt = f"""{custom_prompt}
-
-엑셀 컬럼: {excel_columns}
-
-JSON 형식으로 응답해주세요:
-{{
-  "mapping": {{
-    "엑셀컬럼명": "표준필드명",
-    "매핑불가컬럼": "unmapped"
-  }},
-  "confidence_score": 0.95,
-  "suggestions": ["매핑 개선 제안"]
-}}"""
+                user_prompt = f"""{custom_prompt}"""
             elif self.use_dynamic_prompts:
                 user_prompt = await get_column_mapping_prompt(
                     excel_columns, 

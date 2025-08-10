@@ -590,6 +590,8 @@ async def upload_excel_file(
     file: UploadFile = File(..., description="업로드할 엑셀 파일 (.xlsx, .xls)"),
     user_id: int = Form(..., description="설계사 ID (필수)"),
     auto_map: bool = Query(default=True, description="자동 컬럼 매핑 사용 여부"),
+    custom_prompt: Optional[str] = Form(None, description="커스텀 매핑 프롬프트"),
+    column_mapping_json: Optional[str] = Form(None, description="미리 생성된 컬럼 매핑 JSON"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -681,9 +683,23 @@ async def upload_excel_file(
         
         # 컬럼 매핑
         column_mapping = {}
-        if auto_map:
+        if column_mapping_json:
+            # 미리 생성된 컬럼 매핑이 있는 경우 사용
+            import json
+            try:
+                column_mapping = json.loads(column_mapping_json)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="컬럼 매핑 JSON 형식이 올바르지 않습니다."
+                )
+        elif auto_map:
             excel_columns = df.columns.tolist()
-            mapping_result = await customer_service.map_excel_columns(excel_columns, db_session=db)
+            mapping_result = await customer_service.map_excel_columns(
+                excel_columns, 
+                db_session=db, 
+                custom_prompt=custom_prompt
+            )
             column_mapping = mapping_result["mapping"]
         else:
             # 수동 매핑인 경우 1:1 매핑
