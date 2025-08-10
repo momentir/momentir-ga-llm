@@ -10,3 +10,6 @@ from .auth_models import User, EmailVerification, LoginFailure, PasswordResetTok
 
 # Import prompt management models
 from .prompt_models import PromptTemplate, PromptVersion, PromptABTest, PromptTestResult, PromptTestLog
+
+# Import search history models
+from .search_history import SearchHistory, SearchAnalytics, FrequentFailurePattern

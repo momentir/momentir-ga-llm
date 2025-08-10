@@ -94,6 +94,10 @@ app.include_router(prompt_logs.router)
 from app.api import lcel_sql_routes
 app.include_router(lcel_sql_routes.router)
 
+# 검색 분석 라우터 추가
+from app.routers import search_analytics
+app.include_router(search_analytics.router)
+
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -141,6 +145,11 @@ async def root():
             "search_strategies": "/api/search/strategies",
             "search_health": "/api/search/health",
             "search_websocket": "/ws/search/stream",
+            "search_analytics_record": "/api/search-analytics/record",
+            "search_analytics_popular": "/api/search-analytics/popular-queries",
+            "search_analytics_performance": "/api/search-analytics/performance-stats",
+            "search_analytics_failures": "/api/search-analytics/failure-patterns",
+            "search_analytics_dashboard": "/api/search-analytics/dashboard",
             "docs": "/docs"
         }
     }
