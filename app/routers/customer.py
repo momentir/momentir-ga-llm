@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func as sql_func, and_, update, delete
 from typing import List, Optional
 import pandas as pd
 import io
@@ -11,7 +11,7 @@ from app.models import (
     ErrorResponse
 )
 from app.models.main_models import ExcelUploadRequest, CustomerProductCreate, CustomerProductResponse
-from app.db_models import User
+from app.db_models import User, CustomerProduct
 from app.services.customer_service import CustomerService
 from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
@@ -70,15 +70,12 @@ async def create_customer(request: CustomerCreateRequest, db: AsyncSession = Dep
         customer = await customer_service.create_customer(request, db)
         
         # 가입상품 조회 (관계를 통해 로드)
-        from app.db_models import CustomerProduct
-        from sqlalchemy import select
         
         products_stmt = select(CustomerProduct).where(CustomerProduct.customer_id == customer.customer_id)
         products_result = await db.execute(products_stmt)
         customer_products = products_result.scalars().all()
         
         # 응답 데이터 구성
-        from app.models.main_models import CustomerProductResponse
         products_response = []
         for product in customer_products:
             products_response.append(CustomerProductResponse(
@@ -167,14 +164,12 @@ async def get_customer(
         
         # 가입상품 조회
         from app.db_models import CustomerProduct
-        from sqlalchemy import select
         
         products_stmt = select(CustomerProduct).where(CustomerProduct.customer_id == customer.customer_id)
         products_result = await db.execute(products_stmt)
         customer_products = products_result.scalars().all()
         
         # 가입상품 응답 데이터 구성
-        from app.models.main_models import CustomerProductResponse
         products_response = []
         for product in customer_products:
             products_response.append(CustomerProductResponse(
@@ -273,14 +268,12 @@ async def update_customer(
         
         # 가입상품 조회
         from app.db_models import CustomerProduct
-        from sqlalchemy import select
         
         products_stmt = select(CustomerProduct).where(CustomerProduct.customer_id == updated_customer.customer_id)
         products_result = await db.execute(products_stmt)
         customer_products = products_result.scalars().all()
         
         # 가입상품 응답 데이터 구성
-        from app.models.main_models import CustomerProductResponse
         products_response = []
         for product in customer_products:
             products_response.append(CustomerProductResponse(
@@ -412,7 +405,6 @@ async def list_customers(
     try:
         # 설계사별 필터링을 위한 쿼리 조건 구성
         from app.db_models import Customer, CustomerProduct
-        from sqlalchemy import select, func as sql_func, and_
         
         # 기본 쿼리 구성
         base_query = select(Customer)
@@ -451,7 +443,6 @@ async def list_customers(
             customer_products = products_result.scalars().all()
             
             # 응답 데이터 구성
-            from app.models.main_models import CustomerProductResponse
             products_response = []
             for product in customer_products:
                 products_response.append(CustomerProductResponse(
@@ -630,7 +621,6 @@ async def upload_excel_file(
     try:
         # 설계사 권한 확인
         from app.db_models import User
-        from sqlalchemy import select
         
         user_stmt = select(User).where(User.id == user_id)
         user_result = await db.execute(user_stmt)
@@ -777,14 +767,12 @@ async def get_customer_products(
         
         # 가입상품 조회
         from app.db_models import CustomerProduct
-        from sqlalchemy import select
         
         products_stmt = select(CustomerProduct).where(CustomerProduct.customer_id == customer.customer_id)
         products_result = await db.execute(products_stmt)
         customer_products = products_result.scalars().all()
         
         # 응답 데이터 구성
-        from app.models.main_models import CustomerProductResponse
         products_response = []
         for product in customer_products:
             products_response.append(CustomerProductResponse(
@@ -925,7 +913,6 @@ async def update_customer_product(
         
         # 가입상품 존재 여부 확인
         from app.db_models import CustomerProduct
-        from sqlalchemy import select, update
         import uuid
         
         try:
@@ -1035,7 +1022,6 @@ async def delete_customer_product(
         
         # 가입상품 존재 여부 확인 및 삭제
         from app.db_models import CustomerProduct
-        from sqlalchemy import select, delete
         import uuid
         
         try:

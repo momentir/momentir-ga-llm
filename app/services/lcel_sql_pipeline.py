@@ -458,7 +458,6 @@ class LCELSQLPipeline:
         def parse_sql_result(response: str) -> SQLGenerationResult:
             try:
                 # JSON 파싱 시도
-                import json
                 parsed = json.loads(response)
                 return SQLGenerationResult(**parsed)
             except (json.JSONDecodeError, ValueError):

@@ -1,6 +1,5 @@
 import os
 from typing import Dict, Any, List, Optional
-import openai
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -42,8 +41,6 @@ class MemoRefinementParser:
     def parse(self, text: str) -> Dict[str, Any]:
         try:
             # Try JSON parsing first
-            import json
-            import re
             
             logger.info(f"🔍 파싱할 텍스트 (처음 200자): {text[:200]}...")
             

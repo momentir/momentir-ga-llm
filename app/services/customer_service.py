@@ -2,7 +2,7 @@ import os
 import uuid
 import pandas as pd
 import openai
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from app.db_models import Customer, CustomerProduct, User
@@ -18,7 +18,6 @@ import re
 import logging
 import time
 from collections import defaultdict
-from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -289,9 +288,6 @@ class CustomerService:
             phone = self.normalize_phone(customer_data.phone)
             resident_number = self.mask_resident_number(customer_data.resident_number)
             normalized_gender = self.normalize_gender(customer_data.gender)
-            customer_type = self.normalize_customer_type(customer_data.customer_type)
-            contact_channel = self.normalize_contact_channel(customer_data.contact_channel)
-            account_number = self.normalize_account_number(customer_data.account_number)
 
             # Customer 객체 생성 (모든 새로운 필드 포함)
             customer = Customer(
@@ -467,7 +463,6 @@ class CustomerService:
                 
                 unmapped_columns = [col for col, field in mapping.items() if field == "unmapped"]
                 
-                end_time = time.time()
                 logger.info(f"✅ 1:1 매핑 완료: {len(matched_columns)}개 매핑, {len(unmapped_columns)}개 unmapped")
                 
                 return {
@@ -1406,6 +1401,22 @@ notes
             raise Exception(f"고급 고객 검색 중 오류가 발생했습니다: {str(e)}")
 
     # ======================================
+    # 공통 헬퍼 메서드들
+    # ======================================
+    
+    def _build_user_conditions(self, user_id: Optional[int] = None) -> List[Any]:
+        """설계사 ID 기반 조건 생성 헬퍼"""
+        conditions = []
+        if user_id:
+            conditions.append(Customer.user_id == user_id)
+        return conditions
+    
+    async def _execute_count_query(self, query, db_session: AsyncSession) -> int:
+        """카운트 쿼리 실행 헬퍼"""
+        result = await db_session.execute(query)
+        return result.scalar()
+
+    # ======================================
     # 통계 메서드들
     # ======================================
 
@@ -1414,17 +1425,14 @@ notes
         설계사별 고객 현황 통계
         """
         try:
-            base_conditions = []
-            if user_id:
-                base_conditions.append(Customer.user_id == user_id)
+            base_conditions = self._build_user_conditions(user_id)
             
             # 전체 고객 수
             total_query = select(func.count(Customer.customer_id))
             if base_conditions:
                 total_query = total_query.where(and_(*base_conditions))
             
-            total_result = await db_session.execute(total_query)
-            total_customers = total_result.scalar()
+            total_customers = await self._execute_count_query(total_query, db_session)
             
             # 고객 유형별 분포
             type_query = select(
@@ -1458,8 +1466,7 @@ notes
             if base_conditions:
                 recent_query = recent_query.where(and_(*base_conditions))
             
-            recent_result = await db_session.execute(recent_query)
-            recent_customers = recent_result.scalar()
+            recent_customers = await self._execute_count_query(recent_query, db_session)
             
             return {
                 "total_customers": total_customers,
@@ -1489,8 +1496,7 @@ notes
             if base_conditions:
                 total_query = total_query.where(and_(*base_conditions))
             
-            total_result = await db_session.execute(total_query)
-            total_products = total_result.scalar()
+            total_products = await self._execute_count_query(total_query, db_session)
             
             # 상품별 가입 현황
             product_query = select(
@@ -1527,8 +1533,7 @@ notes
             if base_conditions:
                 recent_query = recent_query.where(and_(*base_conditions))
             
-            recent_result = await db_session.execute(recent_query)
-            recent_products = recent_result.scalar()
+            recent_products = await self._execute_count_query(recent_query, db_session)
             
             # 갱신 예정 상품 (30일 이내)
             renewal_date = datetime.now() + pd.Timedelta(days=30)
@@ -1542,8 +1547,7 @@ notes
             if base_conditions:
                 renewal_query = renewal_query.where(and_(*base_conditions))
             
-            renewal_result = await db_session.execute(renewal_query)
-            renewal_products = renewal_result.scalar()
+            renewal_products = await self._execute_count_query(renewal_query, db_session)
             
             return {
                 "total_products": total_products,
@@ -1643,17 +1647,14 @@ notes
         데이터 품질 검증
         """
         try:
-            base_conditions = []
-            if user_id:
-                base_conditions.append(Customer.user_id == user_id)
+            base_conditions = self._build_user_conditions(user_id)
             
             # 전체 고객 수
             total_query = select(func.count(Customer.customer_id))
             if base_conditions:
                 total_query = total_query.where(and_(*base_conditions))
             
-            total_result = await db_session.execute(total_query)
-            total_customers = total_result.scalar()
+            total_customers = await self._execute_count_query(total_query, db_session)
             
             quality_issues = {
                 "missing_phone": 0,
@@ -1676,8 +1677,7 @@ notes
                 if base_conditions:
                     query = query.where(and_(*base_conditions))
                 
-                result = await db_session.execute(query)
-                quality_issues[issue_key] = result.scalar()
+                quality_issues[issue_key] = await self._execute_count_query(query, db_session)
             
             # 전화번호 형식 체크
             phone_format_query = select(func.count(Customer.customer_id)).where(
@@ -1690,8 +1690,7 @@ notes
             if base_conditions:
                 phone_format_query = phone_format_query.where(and_(*base_conditions))
             
-            phone_format_result = await db_session.execute(phone_format_query)
-            quality_issues["invalid_phone_format"] = phone_format_result.scalar()
+            quality_issues["invalid_phone_format"] = await self._execute_count_query(phone_format_query, db_session)
             
             # 가입상품 없는 고객 수
             no_products_subquery = select(CustomerProduct.customer_id).distinct()
@@ -1701,8 +1700,7 @@ notes
             if base_conditions:
                 no_products_query = no_products_query.where(and_(*base_conditions))
             
-            no_products_result = await db_session.execute(no_products_query)
-            quality_issues["missing_products"] = no_products_result.scalar()
+            quality_issues["missing_products"] = await self._execute_count_query(no_products_query, db_session)
             
             # 품질 점수 계산 (0-100)
             if total_customers > 0:
