@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    container_name: momentir-test-db
+    environment:
+      POSTGRES_DB: momentir_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./scripts/test-db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d momentir_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test_network
+
+volumes:
+  postgres_test_data:
+    driver: local
+
+networks:
+  test_network:
+    driver: bridge
