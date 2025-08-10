@@ -708,6 +708,9 @@ async def upload_excel_file(
         # 데이터 처리 (확장된 process_excel_data 메서드 사용)
         process_result = await customer_service.process_excel_data(df, column_mapping, user_id, db)
         
+        # 트랜잭션 명시적 커밋 (개별 커밋 후 전체 트랜잭션 확정)
+        await db.commit()
+        
         # 확장된 응답 반환
         return ExcelUploadResponse(
             success=process_result["success"],
