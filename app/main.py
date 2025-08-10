@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from app.routers import memo, customer, events, prompts, auth, search
 from app.database import db_manager
 from app.utils.langsmith_config import langsmith_manager
+from app.utils.cloudwatch_logger import cloudwatch_logger
+from app.middleware.monitoring import setup_monitoring_middleware
 from dotenv import load_dotenv
 import os
 import logging
@@ -57,11 +59,32 @@ async def lifespan(app: FastAPI):
     await db_manager.init_db()
     print("데이터베이스가 초기화되었습니다.")
     
+    # CloudWatch 로깅 초기화
+    cloudwatch_logger.log_structured(
+        "INFO", 
+        "Application startup completed",
+        {
+            "event_type": "application_startup",
+            "ecs_fargate": cloudwatch_logger.is_ecs_fargate,
+            "environment": cloudwatch_logger.environment
+        }
+    )
+    
     yield
     
     # 종료 시: 리소스 정리
     await db_manager.close()
     print("데이터베이스 연결이 종료되었습니다.")
+    
+    # CloudWatch 로깅 종료
+    cloudwatch_logger.log_structured(
+        "INFO", 
+        "Application shutdown completed",
+        {
+            "event_type": "application_shutdown",
+            "environment": cloudwatch_logger.environment
+        }
+    )
 
 
 app = FastAPI(
@@ -78,6 +101,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# CloudWatch 모니터링 미들웨어 설정
+setup_monitoring_middleware(app, enable_detailed=True)
 
 app.include_router(auth.router)
 app.include_router(memo.router)

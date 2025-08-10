@@ -1,0 +1,140 @@
+{
+  "test_summary": {
+    "total_tests": 8,
+    "passed_tests": 6,
+    "failed_tests": 2,
+    "success_rate": 75.0
+  },
+  "environment_info": {
+    "environment": "local",
+    "is_ecs_fargate": false,
+    "has_boto3": false,
+    "aws_region": "ap-northeast-2"
+  },
+  "test_results": [
+    {
+      "test_name": "CloudWatch Logger 초기화",
+      "success": true,
+      "message": "환경: local, ECS: False, Boto3: False",
+      "details": {
+        "environment": "local",
+        "is_ecs_fargate": false,
+        "has_boto3_client": false,
+        "task_metadata": {
+          "environment": "local",
+          "is_ecs_fargate": false,
+          "timestamp": "2025-08-10T17:07:47.018698"
+        }
+      },
+      "timestamp": "2025-08-10T18:07:47.019032"
+    },
+    {
+      "test_name": "구조화된 로깅",
+      "success": true,
+      "message": "INFO, WARNING, ERROR 로그 생성 완료",
+      "details": {
+        "logged_data": {
+          "user_id": 12345,
+          "query": "테스트 검색 쿼리",
+          "response_time": 1.25,
+          "test_metric": "monitoring_test"
+        }
+      },
+      "timestamp": "2025-08-10T18:07:47.019186"
+    },
+    {
+      "test_name": "검색 쿼리 로깅",
+      "success": true,
+      "message": "성공/실패 검색 쿼리 로그 생성 완료",
+      "details": {},
+      "timestamp": "2025-08-10T18:07:47.019313"
+    },
+    {
+      "test_name": "성능 메트릭 수집",
+      "success": true,
+      "message": "CPU, 메모리, 디스크 사용량 메트릭 수집 완료",
+      "details": {},
+      "timestamp": "2025-08-10T18:07:48.025268"
+    },
+    {
+      "test_name": "API 헬스체크",
+      "success": true,
+      "message": "상태 코드: 200",
+      "details": {
+        "status_code": 200,
+        "response_time": 1.014919,
+        "response_body": {
+          "status": "healthy"
+        }
+      },
+      "timestamp": "2025-08-10T18:07:49.102609"
+    },
+    {
+      "test_name": "검색 API 모니터링",
+      "success": false,
+      "message": "검색 API 호출 실패: 422",
+      "details": {
+        "status_code": 422,
+        "response_time": 0.004646,
+        "error_detail": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"r\"],\"msg\":\"Field required\",\"input\":null},{\"type\":\"missing\",\"loc\":[\"query\",\"r\"],\"msg\":\"Field required\",\"input\":null}]}"
+      },
+      "timestamp": "2025-08-10T18:07:49.115420"
+    },
+    {
+      "test_name": "동시 요청 모니터링",
+      "success": false,
+      "message": "5개 중 0개 성공 (평균 0.00초)",
+      "details": {
+        "total_requests": 5,
+        "successful_requests": 0,
+        "failed_requests": 5,
+        "avg_response_time": 0,
+        "results": [
+          {
+            "request_id": 0,
+            "status_code": 422,
+            "response_time": 0.0034470558166503906,
+            "success": false
+          },
+          {
+            "request_id": 1,
+            "status_code": 422,
+            "response_time": 0.004730224609375,
+            "success": false
+          },
+          {
+            "request_id": 2,
+            "status_code": 422,
+            "response_time": 0.005754947662353516,
+            "success": false
+          },
+          {
+            "request_id": 3,
+            "status_code": 422,
+            "response_time": 0.0048198699951171875,
+            "success": false
+          },
+          {
+            "request_id": 4,
+            "status_code": 422,
+            "response_time": 0.005208015441894531,
+            "success": false
+          }
+        ]
+      },
+      "timestamp": "2025-08-10T18:07:49.127358"
+    },
+    {
+      "test_name": "메트릭 플러시",
+      "success": true,
+      "message": "5개 메트릭 플러시 완료 (버퍼 비움: True)",
+      "details": {
+        "metrics_added": 5,
+        "buffer_empty_after_flush": true,
+        "has_cloudwatch_client": false
+      },
+      "timestamp": "2025-08-10T18:07:49.127688"
+    }
+  ],
+  "generated_at": "2025-08-10T18:07:49.127708"
+}

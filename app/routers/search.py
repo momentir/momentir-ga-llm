@@ -37,6 +37,7 @@ from app.services.nl_search_service import (
 from app.services.search_cache_service import search_cache_service
 from app.services.search_formatter import search_formatter, HighlightOptions
 from app.utils.langsmith_config import trace_llm_call
+from app.utils.cloudwatch_logger import cloudwatch_logger
 from app.database import read_only_db_manager
 
 logger = logging.getLogger(__name__)
@@ -520,7 +521,7 @@ async def natural_language_search(
                 int(execution_time)
             )
         
-        # 6. 백그라운드에서 메트릭 저장
+        # 6. 백그라운드에서 메트릭 저장 및 CloudWatch 로깅
         background_tasks.add_task(
             _log_search_metrics,
             request_id,
@@ -530,18 +531,51 @@ async def natural_language_search(
             (datetime.now() - start_time).total_seconds()
         )
         
+        # CloudWatch 검색 쿼리 로그 추가
+        user_id = auth_info.get('user_id', 1)  # 개발환경용 기본값
+        cloudwatch_logger.log_search_query(
+            query=request_data.query,
+            user_id=user_id,
+            strategy=response.execution.strategy_used,
+            response_time=(datetime.now() - start_time).total_seconds(),
+            success=True,
+            result_count=response.total_rows
+        )
+        
         return response
         
     except HTTPException:
         raise
     except ValidationError as ve:
         logger.error(f"❌ 입력 검증 실패 [{request_id}]: {ve}")
+        
+        # CloudWatch 에러 로깅
+        user_id = auth_info.get('user_id', 1)
+        cloudwatch_logger.log_search_query(
+            query=request_data.query,
+            user_id=user_id,
+            response_time=(datetime.now() - start_time).total_seconds(),
+            success=False,
+            error_message=f"입력 검증 실패: {str(ve)}"
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"입력 데이터 검증 실패: {str(ve)}"
         )
     except Exception as e:
         logger.error(f"❌ 검색 실패 [{request_id}]: {e}")
+        
+        # CloudWatch 에러 로깅
+        user_id = auth_info.get('user_id', 1)
+        cloudwatch_logger.log_search_query(
+            query=request_data.query if 'request_data' in locals() else "unknown",
+            user_id=user_id,
+            response_time=(datetime.now() - start_time).total_seconds(),
+            success=False,
+            error_message=f"내부 서버 오류: {str(e)}"
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"내부 서버 오류: {str(e)}"

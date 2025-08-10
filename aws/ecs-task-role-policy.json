@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchLogsAccess",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:ap-northeast-2:*:log-group:/ecs/momentir-cx-llm:*",
+        "arn:aws:logs:ap-northeast-2:*:log-group:/ecs/momentir-cx-llm"
+      ]
+    },
+    {
+      "Sid": "CloudWatchMetricsAccess",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": [
+            "MomentirApp/Search",
+            "AWS/ECS"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ECSMetadataAccess",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeContainerInstances",
+        "ecs:DescribeTasks"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
