@@ -67,7 +67,7 @@ class SQLSecurityValidator:
         }
         
         self.allowed_columns = {
-            'customers': {'id', 'name', 'email', 'phone', 'created_at', 'updated_at'},
+            'customers': {'customer_id', 'name', 'affiliation', 'gender', 'date_of_birth', 'phone', 'address', 'job_title', 'created_at', 'updated_at'},
             'memos': {'id', 'customer_id', 'content', 'refined_content', 'created_at', 'updated_at'},
             'events': {'id', 'customer_id', 'event_type', 'priority', 'due_date', 'created_at'},
             'users': {'id', 'email', 'name', 'created_at'},

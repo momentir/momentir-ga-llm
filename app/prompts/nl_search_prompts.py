@@ -51,22 +51,36 @@ class NLSearchPromptManager:
         self.few_shot_examples = [
             # 예제 1: 단순 조회 (복잡도 1)
             FewShotExample(
-                natural_language="모든 고객의 이름과 이메일을 보여주세요",
-                sql_query="SELECT name, email FROM customers;",
-                explanation="고객 테이블에서 이름과 이메일 컬럼만 조회하는 단순한 SELECT 문입니다.",
+                natural_language="모든 고객의 이름과 전화번호를 보여주세요",
+                sql_query="SELECT name, phone FROM customers;",
+                explanation="고객 테이블에서 이름과 전화번호 컬럼만 조회하는 단순한 SELECT 문입니다.",
                 complexity=1,
                 reasoning_steps=[
                     "1. 사용자가 '모든 고객'을 요청했으므로 customers 테이블을 사용",
-                    "2. '이름과 이메일'이 필요하므로 name, email 컬럼 선택",
+                    "2. '이름과 전화번호'가 필요하므로 name, phone 컬럼 선택",
                     "3. 조건이 없으므로 WHERE 절 없이 전체 데이터 조회",
                     "4. 단순한 SELECT 문으로 작성"
+                ]
+            ),
+            
+            # 예제 1-2: 존재하지 않는 컬럼 요청 처리 (복잡도 1)
+            FewShotExample(
+                natural_language="모든 고객의 이름과 이메일을 보여주세요",
+                sql_query="SELECT name, phone FROM customers;",
+                explanation="사용자가 '이메일'을 요청했지만 customers 테이블에는 email 컬럼이 없습니다. 대신 연락처 정보인 phone 컬럼을 사용합니다.",
+                complexity=1,
+                reasoning_steps=[
+                    "1. 사용자가 '모든 고객'을 요청했으므로 customers 테이블을 사용",
+                    "2. '이메일'을 요청했지만 customers 테이블에 email 컬럼이 존재하지 않음",
+                    "3. 대신 연락처 정보인 phone 컬럼을 사용",
+                    "4. name, phone 컬럼으로 SELECT 문 작성"
                 ]
             ),
             
             # 예제 2: 조건부 필터링 (복잡도 2)
             FewShotExample(
                 natural_language="최근 30일 내에 가입한 고객들을 찾아주세요",
-                sql_query="SELECT id, name, email, created_at FROM customers WHERE created_at >= CURRENT_DATE - INTERVAL '30 days' ORDER BY created_at DESC;",
+                sql_query="SELECT customer_id, name, phone, created_at FROM customers WHERE created_at >= CURRENT_DATE - INTERVAL '30 days' ORDER BY created_at DESC;",
                 explanation="날짜 조건을 사용하여 최근 가입한 고객을 조회하고 가입일 역순으로 정렬합니다.",
                 complexity=2,
                 reasoning_steps=[
@@ -81,7 +95,7 @@ class NLSearchPromptManager:
             # 예제 3: JOIN 연산 (복잡도 3)
             FewShotExample(
                 natural_language="각 고객이 작성한 메모의 개수를 보여주세요",
-                sql_query="SELECT c.id, c.name, COUNT(m.id) as memo_count FROM customers c LEFT JOIN memos m ON c.id = m.customer_id GROUP BY c.id, c.name ORDER BY memo_count DESC;",
+                sql_query="SELECT c.customer_id, c.name, COUNT(m.id) as memo_count FROM customers c LEFT JOIN memos m ON c.customer_id = m.customer_id GROUP BY c.customer_id, c.name ORDER BY memo_count DESC;",
                 explanation="고객과 메모 테이블을 조인하여 각 고객별 메모 개수를 집계합니다. 메모가 없는 고객도 포함하기 위해 LEFT JOIN을 사용합니다.",
                 complexity=3,
                 reasoning_steps=[
@@ -98,7 +112,7 @@ class NLSearchPromptManager:
             FewShotExample(
                 natural_language="메모를 5개 이상 작성하고, 우선순위가 높은 이벤트가 있는 고객들의 상세 정보를 보여주세요",
                 sql_query="""
-                SELECT DISTINCT c.id, c.name, c.email, 
+                SELECT DISTINCT c.customer_id, c.name, c.phone, 
                        memo_counts.memo_count,
                        high_priority_events.event_count as high_priority_event_count
                 FROM customers c
@@ -107,14 +121,14 @@ class NLSearchPromptManager:
                     FROM memos 
                     GROUP BY customer_id 
                     HAVING COUNT(*) >= 5
-                ) memo_counts ON c.id = memo_counts.customer_id
+                ) memo_counts ON c.customer_id = memo_counts.customer_id
                 INNER JOIN (
                     SELECT customer_id, COUNT(*) as event_count
                     FROM events 
                     WHERE priority = 'high'
                     GROUP BY customer_id
                     HAVING COUNT(*) > 0
-                ) high_priority_events ON c.id = high_priority_events.customer_id
+                ) high_priority_events ON c.customer_id = high_priority_events.customer_id
                 ORDER BY memo_counts.memo_count DESC, high_priority_events.event_count DESC;
                 """.strip(),
                 explanation="복합 조건을 만족하는 고객을 찾기 위해 서브쿼리와 다중 JOIN을 사용합니다. 메모 개수 조건과 우선순위 이벤트 조건을 각각 서브쿼리로 처리합니다.",
@@ -266,36 +280,40 @@ class NLSearchPromptManager:
             TableSchema(
                 name="customers",
                 columns=[
-                    {"name": "id", "type": "INTEGER", "nullable": False},
-                    {"name": "name", "type": "VARCHAR", "nullable": False},
-                    {"name": "email", "type": "VARCHAR", "nullable": False},
-                    {"name": "phone", "type": "VARCHAR", "nullable": True},
+                    {"name": "customer_id", "type": "UUID", "nullable": False},
+                    {"name": "name", "type": "VARCHAR(100)", "nullable": True},
+                    {"name": "affiliation", "type": "VARCHAR(200)", "nullable": True},
+                    {"name": "gender", "type": "VARCHAR(10)", "nullable": True},
+                    {"name": "date_of_birth", "type": "TIMESTAMP", "nullable": True},
+                    {"name": "phone", "type": "VARCHAR(20)", "nullable": True},
+                    {"name": "address", "type": "VARCHAR(500)", "nullable": True},
+                    {"name": "job_title", "type": "VARCHAR(100)", "nullable": True},
                     {"name": "created_at", "type": "TIMESTAMP", "nullable": False},
                     {"name": "updated_at", "type": "TIMESTAMP", "nullable": False}
                 ],
-                primary_keys=["id"],
+                primary_keys=["customer_id"],
                 foreign_keys=[],
-                indexes=["idx_customers_email"]
+                indexes=["idx_customers_name"]
             ),
             TableSchema(
                 name="memos",
                 columns=[
                     {"name": "id", "type": "INTEGER", "nullable": False},
-                    {"name": "customer_id", "type": "INTEGER", "nullable": False},
+                    {"name": "customer_id", "type": "UUID", "nullable": False},
                     {"name": "content", "type": "TEXT", "nullable": False},
                     {"name": "refined_content", "type": "TEXT", "nullable": True},
                     {"name": "created_at", "type": "TIMESTAMP", "nullable": False},
                     {"name": "updated_at", "type": "TIMESTAMP", "nullable": False}
                 ],
                 primary_keys=["id"],
-                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "id"}],
+                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "customer_id"}],
                 indexes=["idx_memos_customer_id"]
             ),
             TableSchema(
                 name="events",
                 columns=[
                     {"name": "id", "type": "INTEGER", "nullable": False},
-                    {"name": "customer_id", "type": "INTEGER", "nullable": False},
+                    {"name": "customer_id", "type": "UUID", "nullable": False},
                     {"name": "event_type", "type": "VARCHAR", "nullable": False},
                     {"name": "priority", "type": "VARCHAR", "nullable": False},
                     {"name": "status", "type": "VARCHAR", "nullable": False},
@@ -303,7 +321,7 @@ class NLSearchPromptManager:
                     {"name": "created_at", "type": "TIMESTAMP", "nullable": False}
                 ],
                 primary_keys=["id"],
-                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "id"}],
+                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "customer_id"}],
                 indexes=["idx_events_customer_id", "idx_events_priority"]
             )
         ]

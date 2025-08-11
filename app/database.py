@@ -2,10 +2,11 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text, event
+from sqlalchemy import text
 from typing import AsyncGenerator
 import logging
 import asyncio
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +153,15 @@ class ReadOnlyDatabaseManager:
         # LIMIT 절이 없으면 추가
         query_upper = query.upper()
         if "LIMIT" not in query_upper:
+            # 세미콜론 제거 후 LIMIT 추가
+            query = query.rstrip(';').rstrip()
             query = f"{query} LIMIT {limit}"
+
+        # 🔎 최종 실행 SQL 로깅 (LIMIT 등 후처리 반영된 상태)
+        final_sql = query
+        logger.info("🧾 FINAL SQL (effective) ▼\n%s\n-- params: %s",final_sql, json.dumps(params or {}, ensure_ascii=False))
         
-        async with self.get_session() as session:
+        async for session in self.get_session():
             try:
                 # 타임아웃 설정으로 쿼리 실행
                 result = await asyncio.wait_for(
@@ -168,7 +175,7 @@ class ReadOnlyDatabaseManager:
             except Exception as e:
                 logger.error(f"읽기 전용 쿼리 실행 중 오류 발생: {e}")
                 raise
-    
+
     async def close(self):
         """읽기 전용 데이터베이스 연결 종료"""
         await self.engine.dispose()

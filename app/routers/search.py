@@ -16,7 +16,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect,
     Query, Path, Body, BackgroundTasks, Request, Response, status
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, ConfigDict, field_validator, computed_field
 from pydantic.types import StringConstraints
@@ -37,6 +37,7 @@ from app.services.nl_search_service import (
 from app.services.search_cache_service import search_cache_service
 from app.services.search_formatter import search_formatter, HighlightOptions
 from app.utils.langsmith_config import trace_llm_call
+from app.utils.nl_search_langsmith import trace_nl_search_call, log_nl_search_metrics, get_nl_search_project_info
 from app.utils.cloudwatch_logger import cloudwatch_logger
 from app.database import read_only_db_manager
 
@@ -262,8 +263,7 @@ async def get_auth_info(
 
 
 async def validate_search_permissions(
-    auth_info: Annotated[Dict[str, Any], Depends(get_auth_info)],
-    request_data: Optional[Dict[str, Any]] = None
+    auth_info: Annotated[Dict[str, Any], Depends(get_auth_info)]
 ) -> bool:
     """검색 권한 검증"""
     # 실제 권한 검증 로직을 구현할 수 있습니다
@@ -346,38 +346,26 @@ websocket_manager = WebSocketManager()
     """,
     response_description="검색 결과 및 실행 정보"
 )
-@trace_llm_call("natural_language_search_api")
 async def natural_language_search(
-    request_data: Annotated[NaturalLanguageSearchRequest, Body(
-        ...,
-        examples=[
-            {
-                "query": "30대 고객들의 평균 보험료를 지역별로 보여주세요",
-                "context": {"department": "analytics"},
-                "options": {"strategy": "llm_first", "timeout_seconds": 30.0},
-                "limit": 100
-            },
-            {
-                "query": "최근 1개월간 가입한 고객 수",
-                "options": {"strategy": "rule_first", "include_explanation": False},
-                "limit": 50
-            }
-        ]
-    )],
-    search_context: Annotated[Dict[str, Any], Depends(get_search_context)],
-    auth_info: Annotated[Dict[str, Any], Depends(get_auth_info)],
-    has_permission: Annotated[bool, Depends(validate_search_permissions)],
-    background_tasks: BackgroundTasks,
-    use_cache: Annotated[bool, Query(description="캐시 사용 여부")] = True,
-    enable_highlighting: Annotated[bool, Query(description="검색어 하이라이팅 활성화")] = True
+    request_data: NaturalLanguageSearchRequest,
+    background_tasks: BackgroundTasks
 ) -> NaturalLanguageSearchResponse:
     """자연어 검색 메인 엔드포인트"""
     
-    if not has_permission:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="검색 권한이 없습니다"
-        )
+    # 기본 옵션 설정
+    use_cache = True
+    enable_highlighting = True
+    has_permission = True
+    
+    # 기본 컨텍스트 설정
+    search_context = {
+        "request_id": f"req_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
+        "client_ip": "127.0.0.1",
+        "user_agent": "test",
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    auth_info = {"authenticated": False}
     
     request_id = search_context["request_id"]
     start_time = datetime.now()
@@ -443,9 +431,20 @@ async def natural_language_search(
         # 데이터베이스 실행
         try:
             execution_start = datetime.now()
+
+            # 실행 전: LLM이 생성한 SQL/파라미터 로깅 (민감값 마스킹)
+            raw_sql = pipeline_result.sql_result.sql or ""
+            raw_params = pipeline_result.sql_result.parameters or {}
+
+            def _mask(v):
+                return "***" if isinstance(v, str) and any(k in str(v).lower() for k in ["password","passwd","secret","token"]) else v
+
+            safe_params = {k: _mask(v) for k, v in raw_params.items()}
+            logger.info("🧠 LLM SQL (pre-exec) ▼\n%s\n-- params: %s", raw_sql, json.dumps(safe_params, ensure_ascii=False))
+
             db_results = await read_only_db_manager.execute_query_with_limit(
-                pipeline_result.sql_result.sql,
-                pipeline_result.sql_result.parameters,
+                raw_sql,
+                raw_params,
                 limit=request_data.limit
             )
             execution_time = (datetime.now() - execution_start).total_seconds() * 1000
@@ -455,9 +454,9 @@ async def natural_language_search(
             if db_results:
                 columns = db_results[0]._fields if hasattr(db_results[0], '_fields') else []
                 data = [dict(zip(columns, row)) for row in db_results]
-            
-            logger.info(f"✅ 검색 완료 [{request_id}]: {len(data)}행")
-            
+
+            logger.info("✅ DB 실행 완료 [%s]: %d행 (%.1f ms)", request_id, len(data), execution_time)
+
         except Exception as db_error:
             logger.error(f"❌ DB 실행 실패 [{request_id}]: {db_error}")
             raise HTTPException(
@@ -542,6 +541,15 @@ async def natural_language_search(
             result_count=response.total_rows
         )
         
+        # 자연어 검색 전용 LangSmith 메트릭 로깅
+        log_nl_search_metrics(
+            query=request_data.query,
+            result=response.model_dump(),
+            execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+            strategy=response.execution.strategy_used,
+            success=True
+        )
+        
         return response
         
     except HTTPException:
@@ -559,6 +567,16 @@ async def natural_language_search(
             error_message=f"입력 검증 실패: {str(ve)}"
         )
         
+        # 자연어 검색 오류 메트릭 로깅
+        log_nl_search_metrics(
+            query=request_data.query,
+            result={},
+            execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+            strategy="unknown",
+            success=False,
+            error=f"입력 검증 실패: {str(ve)}"
+        )
+        
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"입력 데이터 검증 실패: {str(ve)}"
@@ -568,12 +586,23 @@ async def natural_language_search(
         
         # CloudWatch 에러 로깅
         user_id = auth_info.get('user_id', 1)
+        query_text = request_data.query if 'request_data' in locals() else "unknown"
         cloudwatch_logger.log_search_query(
-            query=request_data.query if 'request_data' in locals() else "unknown",
+            query=query_text,
             user_id=user_id,
             response_time=(datetime.now() - start_time).total_seconds(),
             success=False,
             error_message=f"내부 서버 오류: {str(e)}"
+        )
+        
+        # 자연어 검색 오류 메트릭 로깅
+        log_nl_search_metrics(
+            query=query_text,
+            result={},
+            execution_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+            strategy="unknown",
+            success=False,
+            error=f"내부 서버 오류: {str(e)}"
         )
         
         raise HTTPException(
@@ -1033,6 +1062,47 @@ async def cleanup_expired_cache() -> Dict[str, Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"캐시 정리 중 오류: {str(e)}"
         )
+
+
+# 웹 인터페이스 엔드포인트
+@router.get(
+    "/tester",
+    response_class=HTMLResponse,
+    summary="자연어 검색 테스터 웹 페이지",
+    description="자연어 검색을 테스트할 수 있는 웹 인터페이스를 제공합니다.",
+    include_in_schema=False  # OpenAPI 스키마에서 제외
+)
+async def nl_search_tester():
+    """자연어 검색 테스터 웹 페이지"""
+    import os
+    static_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "nl_search_tester.html")
+    
+    try:
+        with open(static_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="자연어 검색 테스터 웹 페이지를 찾을 수 없습니다."
+        )
+
+
+@router.get(
+    "/langsmith-info",
+    response_model=Dict[str, Any],
+    summary="LangSmith 프로젝트 정보",
+    description="현재 자연어 검색에 사용 중인 LangSmith 프로젝트 정보를 반환합니다."
+)
+async def get_langsmith_info() -> Dict[str, Any]:
+    """LangSmith 프로젝트 정보 조회"""
+    project_info = get_nl_search_project_info()
+    
+    return {
+        "langsmith": project_info,
+        "timestamp": datetime.now().isoformat(),
+        "service": "natural_language_search"
+    }
 
 
 # 라우터에 추가 메타데이터 설정

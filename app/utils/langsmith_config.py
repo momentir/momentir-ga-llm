@@ -71,6 +71,28 @@ class LangSmithManager:
         else:
             return "local-llm-excel-upload"
     
+    def get_nl_search_project_name(self) -> str:
+        """자연어 검색용 프로젝트명 반환"""
+        # 운영환경 감지 조건들
+        is_production = (
+            os.getenv("ENVIRONMENT") == "production" or 
+            os.getenv("AWS_EXECUTION_ENV") is not None or
+            os.getenv("ECS_CONTAINER_METADATA_URI") is not None or
+            os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+        )
+        
+        # 로컬 환경 명시적 감지 (운영환경이 아닌 경우만 체크)
+        is_local = not is_production and (
+            os.getenv("ENVIRONMENT") == "local" or
+            os.path.exists(".env")  # .env 파일 존재하고 운영환경이 아닌 경우 로컬로 간주
+        )
+        
+        # 자연어 검색용 프로젝트명 결정
+        if is_production:
+            return "momentir-cx-llm-nl-search"
+        else:
+            return "local-llm-nl-search"
+    
     def _initialize(self):
         """LangSmith 초기화"""
         api_key = os.getenv("LANGSMITH_API_KEY")

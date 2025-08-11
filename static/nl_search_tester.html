@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자연어 검색 테스터</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f6fa;
+            color: #2f3640;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #3c6382 0%, #0c2461 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e1e8ed;
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3c6382;
+            box-shadow: 0 0 0 3px rgba(60, 99, 130, 0.1);
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+
+        #query-input {
+            min-height: 80px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3c6382 0%, #0c2461 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(60, 99, 130, 0.3);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+
+        .btn-toggle {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            font-size: 14px;
+            padding: 8px 16px;
+        }
+
+        .results-section {
+            grid-column: 1 / -1;
+            margin-top: 20px;
+        }
+
+        .result-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 16px;
+            color: #6c757d;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            color: #3c6382;
+            border-bottom-color: #3c6382;
+            font-weight: 600;
+        }
+
+        .tab-button:hover {
+            color: #3c6382;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .result-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .result-box.json-result {
+            white-space: pre;
+        }
+
+        .sql-box {
+            background: #2d3748;
+            color: #e2e8f0;
+            border: 1px solid #4a5568;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+
+        .success {
+            border-left: 4px solid #2ecc71;
+            background-color: #d5f4e6;
+        }
+
+        .error {
+            border-left: 4px solid #e74c3c;
+            background-color: #ffeaea;
+        }
+
+        .warning {
+            border-left: 4px solid #f39c12;
+            background-color: #fef9e7;
+        }
+
+        .info {
+            border-left: 4px solid #3498db;
+            background-color: #ebf3fd;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3c6382;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .custom-prompt-section {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            border: 2px dashed #f39c12;
+            border-radius: 8px;
+            background-color: #fef9e7;
+        }
+
+        .custom-prompt-section.show {
+            display: block;
+        }
+
+        .examples-list {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+
+        .example-item {
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            margin-bottom: 8px;
+            border-left: 3px solid #3c6382;
+            background: white;
+        }
+
+        .example-item:hover {
+            background-color: #e9ecef;
+        }
+
+        .example-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #3c6382;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #3c6382;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 자연어 검색 테스터</h1>
+            <p>자연어로 데이터베이스를 검색하고 SQL 생성 과정을 확인해보세요</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 검색 입력 섹션 -->
+            <div class="card">
+                <h2>🎯 자연어 검색</h2>
+                
+                <div class="form-group">
+                    <label for="query-input">검색 쿼리 (한국어)</label>
+                    <textarea id="query-input" placeholder="예: 30대 고객들의 평균 메모 개수를 보여주세요
+또는: 최근 1개월간 가입한 고객 목록
+또는: 우선순위가 높은 이벤트가 있는 고객들"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="strategy-select">검색 전략</label>
+                    <select id="strategy-select">
+                        <option value="llm_first">LLM 우선 (권장)</option>
+                        <option value="rule_first">규칙 기반 우선</option>
+                        <option value="hybrid">하이브리드 (최고 품질)</option>
+                        <option value="llm_only">LLM 전용</option>
+                        <option value="rule_only">규칙 기반 전용</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="result-limit">결과 제한 수</label>
+                    <input type="number" id="result-limit" value="50" min="1" max="1000">
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-success" onclick="executeSearch()">🚀 검색 실행</button>
+                    <button class="btn btn-secondary" onclick="clearResults()">🗑️ 결과 초기화</button>
+                    <button class="btn btn-toggle" onclick="toggleCustomPrompt()">⚙️ 고급 옵션</button>
+                </div>
+
+                <!-- 커스텀 프롬프트 섹션 -->
+                <div class="custom-prompt-section" id="custom-prompt-section">
+                    <h3>⚠️ 고급 옵션: 커스텀 프롬프트</h3>
+                    <p style="color: #e67e22; margin-bottom: 15px;">
+                        <strong>주의:</strong> 이 기능은 디버깅/테스트 목적입니다. 일반 사용자는 기본 프롬프트를 사용하세요.
+                    </p>
+                    <div class="form-group">
+                        <label for="custom-prompt">커스텀 SQL 생성 프롬프트</label>
+                        <textarea id="custom-prompt" placeholder="사용자 정의 프롬프트를 입력하세요..."></textarea>
+                    </div>
+                </div>
+
+                <div class="loading" id="search-loading">
+                    <div class="spinner"></div>
+                    자연어 쿼리를 SQL로 변환하고 있습니다...
+                </div>
+            </div>
+
+            <!-- 예제 및 도움말 섹션 -->
+            <div class="card">
+                <h2>💡 검색 예제</h2>
+                
+                <div class="examples-list">
+                    <div class="example-item" onclick="loadExample('모든 고객의 이름과 이메일을 보여주세요')">
+                        <strong>기본 조회:</strong> 모든 고객의 이름과 이메일을 보여주세요
+                    </div>
+                    <div class="example-item" onclick="loadExample('최근 30일 내에 가입한 고객들을 찾아주세요')">
+                        <strong>날짜 필터:</strong> 최근 30일 내에 가입한 고객들을 찾아주세요
+                    </div>
+                    <div class="example-item" onclick="loadExample('각 고객이 작성한 메모의 개수를 보여주세요')">
+                        <strong>집계 쿼리:</strong> 각 고객이 작성한 메모의 개수를 보여주세요
+                    </div>
+                    <div class="example-item" onclick="loadExample('30대 고객들의 평균 보험료를 지역별로 분석해주세요')">
+                        <strong>복잡 분석:</strong> 30대 고객들의 평균 보험료를 지역별로 분석해주세요
+                    </div>
+                    <div class="example-item" onclick="loadExample('우선순위가 높은 이벤트가 있는 고객의 메모를 최신순으로 보여주세요')">
+                        <strong>조인 쿼리:</strong> 우선순위가 높은 이벤트가 있는 고객의 메모를 최신순으로 보여주세요
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 20px;">🛡️ 보안 기능</h3>
+                <p style="color: #6c757d; font-size: 14px;">
+                    • SQL Injection 자동 방어<br>
+                    • 읽기 전용 쿼리만 허용<br>
+                    • 5초 쿼리 타임아웃<br>
+                    • 결과 행 수 제한
+                </p>
+            </div>
+        </div>
+
+        <!-- 결과 섹션 -->
+        <div class="results-section">
+            <div class="card">
+                <h2>📊 검색 결과</h2>
+                
+                <div class="result-tabs" id="result-tabs" style="display: none;">
+                    <button class="tab-button active" onclick="switchTab('generated-sql')">생성된 SQL</button>
+                    <button class="tab-button" onclick="switchTab('search-results')">검색 결과</button>
+                    <button class="tab-button" onclick="switchTab('execution-info')">실행 정보</button>
+                    <button class="tab-button" onclick="switchTab('debug-info')">디버그 정보</button>
+                </div>
+
+                <div id="result-container">
+                    <p style="color: #6c757d; text-align: center; padding: 40px;">
+                        자연어 검색을 실행하면 결과가 여기에 표시됩니다.
+                    </p>
+                </div>
+
+                <!-- 탭 컨텐츠 -->
+                <div id="generated-sql" class="tab-content">
+                    <div class="sql-box" id="sql-content">
+                        생성된 SQL 쿼리가 여기에 표시됩니다.
+                    </div>
+                </div>
+
+                <div id="search-results" class="tab-content">
+                    <div class="result-box" id="results-content">
+                        검색 결과 데이터가 여기에 표시됩니다.
+                    </div>
+                </div>
+
+                <div id="execution-info" class="tab-content">
+                    <div class="stats-grid" id="stats-grid">
+                        <!-- 통계 카드들이 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <div id="debug-info" class="tab-content">
+                    <div class="result-box" id="debug-content">
+                        디버그 정보가 여기에 표시됩니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let currentResult = null;
+        let searchHistory = [];
+
+        // 페이지 로드시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('자연어 검색 테스터 초기화');
+        });
+
+        // 예제 쿼리 로드
+        function loadExample(query) {
+            document.getElementById('query-input').value = query;
+            showNotification(`예제 쿼리가 로드되었습니다: "${query.substring(0, 30)}..."`, 'info');
+        }
+
+        // 커스텀 프롬프트 토글
+        function toggleCustomPrompt() {
+            const section = document.getElementById('custom-prompt-section');
+            const isVisible = section.classList.contains('show');
+            
+            if (isVisible) {
+                section.classList.remove('show');
+                showNotification('고급 옵션이 숨겨졌습니다. 기본 프롬프트를 사용합니다.', 'info');
+            } else {
+                section.classList.add('show');
+                showNotification('⚠️ 고급 옵션이 활성화되었습니다. 신중하게 사용하세요.', 'warning');
+            }
+        }
+
+        // 검색 실행
+        async function executeSearch() {
+            const query = document.getElementById('query-input').value.trim();
+            const strategy = document.getElementById('strategy-select').value;
+            const limit = parseInt(document.getElementById('result-limit').value);
+            const customPrompt = document.getElementById('custom-prompt').value.trim();
+
+            if (!query) {
+                showNotification('검색 쿼리를 입력해주세요.', 'error');
+                return;
+            }
+
+            const loadingEl = document.getElementById('search-loading');
+            loadingEl.classList.add('show');
+
+            try {
+                // API 요청 데이터 구성
+                const requestData = {
+                    query: query,
+                    context: {
+                        ui_source: 'nl_search_tester',
+                        timestamp: new Date().toISOString()
+                    },
+                    options: {
+                        strategy: strategy,
+                        include_explanation: true,
+                        timeout_seconds: 30.0
+                    },
+                    limit: limit
+                };
+
+                // 커스텀 프롬프트가 있는 경우 추가 (향후 구현 예정)
+                if (customPrompt) {
+                    requestData.custom_prompt = customPrompt;
+                }
+
+                console.log('검색 요청 데이터:', requestData);
+
+                const response = await fetch('/api/search/natural-language', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    currentResult = result;
+                    displaySearchResult(result);
+                    addToSearchHistory(query, result);
+                    showNotification(`검색 완료! ${result.total_rows}행의 결과를 찾았습니다.`, 'success');
+                } else {
+                    displayError(result);
+                    showNotification(`검색 실패: ${result.detail || '알 수 없는 오류'}`, 'error');
+                }
+
+            } catch (error) {
+                console.error('검색 실행 중 오류:', error);
+                displayError({ detail: `네트워크 오류: ${error.message}` });
+                showNotification(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                loadingEl.classList.remove('show');
+            }
+        }
+
+        // 검색 결과 표시
+        function displaySearchResult(result) {
+            // 탭 표시
+            document.getElementById('result-tabs').style.display = 'flex';
+            
+            // 1. 생성된 SQL 탭
+            const sqlContent = document.getElementById('sql-content');
+            sqlContent.textContent = result.execution.sql_query;
+            
+            // 2. 검색 결과 탭
+            const resultsContent = document.getElementById('results-content');
+            if (result.data && result.data.length > 0) {
+                resultsContent.textContent = JSON.stringify(result.data, null, 2);
+                resultsContent.className = 'result-box json-result success';
+            } else {
+                resultsContent.textContent = '검색 결과가 없습니다.';
+                resultsContent.className = 'result-box warning';
+            }
+            
+            // 3. 실행 정보 탭
+            displayExecutionStats(result);
+            
+            // 4. 디버그 정보 탭
+            const debugContent = document.getElementById('debug-content');
+            debugContent.textContent = JSON.stringify(result, null, 2);
+            debugContent.className = 'result-box json-result info';
+            
+            // 첫 번째 탭 활성화
+            switchTab('generated-sql');
+        }
+
+        // 실행 통계 표시
+        function displayExecutionStats(result) {
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = '';
+
+            const stats = [
+                {
+                    label: '실행 시간',
+                    value: `${result.execution.execution_time_ms.toFixed(1)}ms`,
+                    color: '#3c6382'
+                },
+                {
+                    label: '결과 행 수',
+                    value: result.total_rows.toLocaleString(),
+                    color: '#2ecc71'
+                },
+                {
+                    label: '사용된 전략',
+                    value: result.execution.strategy_used,
+                    color: '#f39c12'
+                },
+                {
+                    label: '검색 의도',
+                    value: result.intent.intent_type,
+                    color: '#9b59b6'
+                },
+                {
+                    label: '신뢰도',
+                    value: `${(result.intent.confidence * 100).toFixed(1)}%`,
+                    color: '#e67e22'
+                },
+                {
+                    label: '키워드 수',
+                    value: result.intent.keywords.length,
+                    color: '#1abc9c'
+                }
+            ];
+
+            stats.forEach(stat => {
+                const card = document.createElement('div');
+                card.className = 'stat-card';
+                card.style.borderLeftColor = stat.color;
+                card.innerHTML = `
+                    <div class="stat-value" style="color: ${stat.color}">${stat.value}</div>
+                    <div class="stat-label">${stat.label}</div>
+                `;
+                statsGrid.appendChild(card);
+            });
+        }
+
+        // 에러 표시
+        function displayError(error) {
+            document.getElementById('result-tabs').style.display = 'none';
+            const container = document.getElementById('result-container');
+            container.innerHTML = `
+                <div class="result-box error">
+                    <strong>오류 발생:</strong><br>
+                    ${error.detail || JSON.stringify(error, null, 2)}
+                </div>
+            `;
+        }
+
+        // 탭 전환
+        function switchTab(tabName) {
+            // 모든 탭 비활성화
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // 선택된 탭 활성화
+            document.querySelector(`button[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // 검색 기록 추가
+        function addToSearchHistory(query, result) {
+            const historyItem = {
+                query: query,
+                timestamp: new Date().toISOString(),
+                success: result.success,
+                total_rows: result.total_rows,
+                response_time: result.execution.execution_time_ms
+            };
+            
+            searchHistory.unshift(historyItem);
+            if (searchHistory.length > 50) {
+                searchHistory = searchHistory.slice(0, 50);
+            }
+            
+            console.log('검색 기록 추가:', historyItem);
+        }
+
+        // 결과 초기화
+        function clearResults() {
+            document.getElementById('result-tabs').style.display = 'none';
+            const container = document.getElementById('result-container');
+            container.innerHTML = `
+                <p style="color: #6c757d; text-align: center; padding: 40px;">
+                    자연어 검색을 실행하면 결과가 여기에 표시됩니다.
+                </p>
+            `;
+            currentResult = null;
+            showNotification('결과가 초기화되었습니다.', 'info');
+        }
+
+        // 알림 표시
+        function showNotification(message, type = 'info') {
+            // 기존 알림 제거
+            const existing = document.querySelector('.notification');
+            if (existing) {
+                existing.remove();
+            }
+
+            // 새 알림 생성
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 1000;
+                max-width: 400px;
+                word-wrap: break-word;
+                animation: slideIn 0.3s ease;
+            `;
+
+            // 타입별 색상
+            const colors = {
+                'success': '#2ecc71',
+                'error': '#e74c3c',
+                'warning': '#f39c12',
+                'info': '#3498db'
+            };
+            notification.style.backgroundColor = colors[type] || colors.info;
+            notification.textContent = message;
+
+            // 애니메이션 CSS 추가 (한 번만)
+            if (!document.querySelector('#notification-style')) {
+                const style = document.createElement('style');
+                style.id = 'notification-style';
+                style.textContent = `
+                    @keyframes slideIn {
+                        from { transform: translateX(100%); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(notification);
+
+            // 3초 후 자동 제거
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.style.animation = 'slideIn 0.3s ease reverse';
+                    setTimeout(() => notification.remove(), 300);
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

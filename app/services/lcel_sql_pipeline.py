@@ -457,16 +457,54 @@ class LCELSQLPipeline:
         # 결과 파싱 함수
         def parse_sql_result(response: str) -> SQLGenerationResult:
             try:
-                # JSON 파싱 시도
+                # JSON 파싱 시도 (전체 응답)
                 parsed = json.loads(response)
                 return SQLGenerationResult(**parsed)
-            except (json.JSONDecodeError, ValueError):
-                # 간단한 텍스트 파싱
+            except (json.JSONDecodeError, ValueError) as e:
+                # JSON 파싱 실패 시 JSON 블록 추출 시도
+                try:
+                    import re
+                    # ```json 블록에서 JSON 추출
+                    json_match = re.search(r'```json\s*\n(.*?)\n```', response, re.DOTALL | re.IGNORECASE)
+                    if json_match:
+                        json_content = json_match.group(1).strip()
+                        parsed = json.loads(json_content)
+                        return SQLGenerationResult(**parsed)
+                    
+                    # 일반적인 JSON 블록 추출 (``` 없는 경우)
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        json_content = json_match.group(0).strip()
+                        parsed = json.loads(json_content)
+                        return SQLGenerationResult(**parsed)
+                        
+                except (json.JSONDecodeError, ValueError, KeyError) as parse_error:
+                    logger.warning(f"JSON 파싱 실패, SQL 추출 시도: {parse_error}")
+                    
+                    # SQL만 추출 시도 (SELECT 문 찾기)
+                    import re
+                    sql_match = re.search(r'(SELECT\s+.*?;?)', response, re.DOTALL | re.IGNORECASE)
+                    if sql_match:
+                        extracted_sql = sql_match.group(1).strip()
+                        # 세미콜론 제거
+                        if extracted_sql.endswith(';'):
+                            extracted_sql = extracted_sql[:-1]
+                        
+                        logger.info(f"응답에서 SQL 추출 성공: {extracted_sql[:100]}...")
+                        return SQLGenerationResult(
+                            sql=extracted_sql,
+                            explanation="응답에서 SQL 구문을 추출했습니다",
+                            confidence=0.7,
+                            generation_method="llm"
+                        )
+                
+                # 모든 파싱 실패 시 에러 처리
+                logger.error(f"LLM 응답 파싱 완전 실패. 원본 응답: {response[:200]}...")
                 return SQLGenerationResult(
-                    sql=response.strip(),
-                    explanation="LLM에서 생성된 SQL 쿼리",
-                    confidence=0.8,
-                    generation_method="llm"
+                    sql="SELECT 1 as parsing_failed",
+                    explanation=f"LLM 응답 파싱 실패: {str(e)[:100]}",
+                    confidence=0.1,
+                    generation_method="llm_error"
                 )
         
         # LLM 호출 체인

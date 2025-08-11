@@ -133,9 +133,9 @@ class NaturalLanguageSearchService:
         self.llm_manager = LLMClientManager()
         self.chat_client = self.llm_manager.chat_client
         
-        # 스키마 정보 (실제 DB 스키마로 업데이트 필요)
+        # 스키마 정보 (실제 DB 스키마와 일치)
         self.database_schema = {
-            "customers": ["id", "name", "email", "phone", "created_at", "updated_at"],
+            "customers": ["customer_id", "name", "affiliation", "gender", "date_of_birth", "phone", "address", "job_title", "created_at", "updated_at"],
             "memos": ["id", "customer_id", "content", "refined_content", "created_at"],
             "events": ["id", "customer_id", "event_type", "priority", "due_date", "created_at"],
         }
