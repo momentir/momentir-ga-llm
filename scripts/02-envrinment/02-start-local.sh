@@ -108,7 +108,7 @@ echo "🔍 애플리케이션 모듈 import 검증 중..."
 echo "   ➤ Python import 테스트 실행 (KoNLPy 비활성화)..."
 
 # Java 런타임 문제 방지를 위해 KoNLPy 임시 비활성화
-export DISABLE_KONLPY=true
+#export DISABLE_KONLPY=true
 
 ./venv/bin/python -c "
 try:

@@ -1,0 +1,164 @@
+graph TD
+      %% 사용자 인터페이스 계층
+      subgraph UI ["🖥️ User Interface Layer"]
+          PM["`📝 **prompt_manager.html**
+          메모 정제 프롬프트 관리`"]
+          EU["`📊 **excel_upload_tester.html**
+          엑셀 업로드 LLM 정제`"]
+          NS["`🔍 **nl_search_tester.html**
+          자연어 검색 테스터`"]
+      end
+
+      %% LocalStorage RAG 시스템
+      subgraph LocalRAG ["💾 LocalStorage RAG Systems"]
+          PMRAG["`**Prompt Manager RAG**
+          Key: 'savedPrompts'
+          • 프롬프트 템플릿 버전 관리
+          • 메타데이터 추적
+          • CRUD 인터페이스`"]
+
+          EURAG["`**Excel Upload RAG**
+          Key: 'columnMappingPrompts'
+          • 672줄 보험업계 도메인 지식
+          • 컬럼 매핑 규칙 베이스
+          • 필드 정규화 템플릿`"]
+      end
+
+      %% 도메인 지식 베이스
+      subgraph DomainKB ["🧠 Domain Knowledge Base"]
+          InsuranceKB["`**보험업계 특화 지식**
+          • 고객 필드 매핑 규칙
+          • 휴대폰 번호 정규화
+          • 성별/생년월일 표준화
+          • 주민번호 마스킹 규칙
+          • 보험상품 분류 체계`"]
+
+          SQLKb["`**SQL/DB 스키마 지식**
+          • Few-shot 예제 (5단계 복잡도)
+          • PostgreSQL 문법 가이드
+          • 테이블 관계 정의
+          • 보안 쿼리 패턴`"]
+      end
+
+      %% API/LangChain 계층
+      subgraph APIs ["🔗 API & LangChain Pipelines"]
+          MemoAPI["`**/api/memo/refine**
+          메모 정제 LLM 처리`"]
+
+          ColMapAPI["`**/api/customer/column-mapping**
+          Excel 컬럼 분석 LLM`"]
+
+          ExcelAPI["`**/api/customer/excel-upload**
+          데이터 정제 및 저장`"]
+
+          NLSearchAPI["`**/api/search/natural-language**
+          자연어→SQL 변환`"]
+      end
+
+      %% LLM 처리 엔진
+      subgraph LLMCore ["🤖 LLM Processing Core"]
+          IntentLLM["`**Intent Classification**
+          자연어 의도 분석
+          Chain-of-Thought 추론`"]
+
+          SQLLLM["`**SQL Generation LLM**
+          6단계 체계적 SQL 생성
+          • 요구사항 분석
+          • 테이블 관계 분석
+          • 조건 설계
+          • 집계 설계
+          • 정렬 설계
+          • 검증`"]
+
+          MemoLLM["`**Memo Refinement LLM**
+          보험업계 메모 구조화
+          JSON 형식 출력`"]
+
+          ExcelLLM["`**Excel Processing LLM**
+          Two-Stage Pipeline:
+          1. Column Mapping
+          2. Data Refinement`"]
+      end
+
+      %% LangSmith 추적 시스템
+      subgraph LangSmith ["📊 LangSmith Monitoring"]
+          LSProj1["`**momentir-cx-llm**
+          메모 정제 프로젝트`"]
+
+          LSProj2["`**momentir-cx-llm-nl-search**
+          자연어 검색 프로젝트`"]
+
+          LSProj3["`**momentir-cx-llm-excel**
+          엑셀 처리 프로젝트`"]
+
+          LSConfig["`**Environment Detection**
+          Production vs Local
+          Project Name Mapping`"]
+      end
+
+      %% 데이터베이스
+      subgraph Database ["🗄️ Database Layer"]
+          PostgresDB["`**PostgreSQL + pgvector**
+          • customers (UUID PK)
+          • memos
+          • events
+          • insurance_products
+          • Vector Search Ready`"]
+
+          SchemaCache["`**Schema Caching**
+          1시간 TTL
+          실시간 스키마 반영`"]
+      end
+
+      %% 연결 관계
+      PM --> PMRAG
+      EU --> EURAG
+
+      PMRAG --> MemoAPI
+      EURAG --> ColMapAPI
+      EURAG --> ExcelAPI
+
+      PM --> MemoAPI
+      EU --> ColMapAPI
+      EU --> ExcelAPI
+      NS --> NLSearchAPI
+
+      InsuranceKB --> ExcelLLM
+      SQLKb --> SQLLLM
+
+      MemoAPI --> MemoLLM
+      ColMapAPI --> ExcelLLM
+      ExcelAPI --> ExcelLLM
+      NLSearchAPI --> IntentLLM
+      NLSearchAPI --> SQLLLM
+
+      IntentLLM --> LSProj2
+      SQLLLM --> LSProj2
+      MemoLLM --> LSProj1
+      ExcelLLM --> LSProj3
+
+      LSConfig --> LSProj1
+      LSConfig --> LSProj2
+      LSConfig --> LSProj3
+
+      SQLLLM --> SchemaCache
+      SchemaCache --> PostgresDB
+      ExcelLLM --> PostgresDB
+      MemoLLM --> PostgresDB
+
+      %% 스타일링
+      classDef uiClass fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+      classDef ragClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+      classDef apiClass fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+      classDef llmClass fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+      classDef lsClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+      classDef dbClass fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+      classDef kbClass fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+
+      class PM,EU,NS uiClass
+      class PMRAG,EURAG ragClass
+      class MemoAPI,ColMapAPI,ExcelAPI,NLSearchAPI apiClass
+      class IntentLLM,SQLLLM,MemoLLM,ExcelLLM llmClass
+      class LSProj1,LSProj2,LSProj3,LSConfig lsClass
+      class PostgresDB,SchemaCache dbClass
+      class InsuranceKB,SQLKb kbClass
