@@ -54,7 +54,7 @@ class SearchCacheService:
             cache_key = SearchCache.generate_cache_key(query, context, options)
             logger.debug(f"캐시 조회: key={cache_key}, query='{query[:50]}...'")
             
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 # 캐시 조회 및 만료 확인
                 stmt = select(SearchCache).where(
                     SearchCache.query_hash == cache_key,
@@ -111,7 +111,7 @@ class SearchCacheService:
             
             logger.debug(f"캐시 저장: key={cache_key}, query='{query[:50]}...', TTL={ttl}분")
             
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 # UPSERT 구현 (PostgreSQL ON CONFLICT 사용)
                 now = datetime.utcnow()
                 expires_at = now + timedelta(minutes=ttl)
@@ -180,7 +180,7 @@ class SearchCacheService:
             삭제된 항목 수
         """
         try:
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 if query:
                     # 특정 쿼리 삭제
                     cache_key = SearchCache.generate_cache_key(query)
@@ -211,7 +211,7 @@ class SearchCacheService:
             삭제된 항목 수
         """
         try:
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 # PostgreSQL 함수 호출
                 await session.execute(text("SELECT cleanup_expired_cache()"))
                 
@@ -239,7 +239,7 @@ class SearchCacheService:
             캐시 통계 정보
         """
         try:
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 now = datetime.utcnow()
                 
                 # 기본 통계
@@ -319,7 +319,7 @@ class SearchCacheService:
             인기 검색어 목록
         """
         try:
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 cutoff_date = datetime.utcnow() - timedelta(days=days)
                 
                 stmt = (
@@ -373,7 +373,7 @@ class SearchCacheService:
             매치되는 쿼리 목록
         """
         try:
-            async with db_manager.get_async_session() as session:
+            async for session in db_manager.get_session():
                 now = datetime.utcnow()
                 
                 # 유사한 쿼리 검색 (pg_trgm 활용)

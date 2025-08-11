@@ -95,12 +95,12 @@ class NLSearchPromptManager:
             # 예제 3: JOIN 연산 (복잡도 3)
             FewShotExample(
                 natural_language="각 고객이 작성한 메모의 개수를 보여주세요",
-                sql_query="SELECT c.customer_id, c.name, COUNT(m.id) as memo_count FROM customers c LEFT JOIN memos m ON c.customer_id = m.customer_id GROUP BY c.customer_id, c.name ORDER BY memo_count DESC;",
+                sql_query="SELECT c.customer_id, c.name, COUNT(m.id) as memo_count FROM customers c LEFT JOIN customer_memos m ON c.customer_id = m.customer_id GROUP BY c.customer_id, c.name ORDER BY memo_count DESC;",
                 explanation="고객과 메모 테이블을 조인하여 각 고객별 메모 개수를 집계합니다. 메모가 없는 고객도 포함하기 위해 LEFT JOIN을 사용합니다.",
                 complexity=3,
                 reasoning_steps=[
                     "1. 고객 정보가 필요하므로 customers 테이블 선택",
-                    "2. 메모 개수가 필요하므로 memos 테이블과 조인 필요",
+                    "2. 메모 개수가 필요하므로 customer_memos 테이블과 조인 필요",
                     "3. '각 고객'이므로 GROUP BY를 통한 그룹화 필요",
                     "4. COUNT(m.id)로 메모 개수 계산",
                     "5. LEFT JOIN으로 메모가 없는 고객도 포함",
@@ -118,7 +118,7 @@ class NLSearchPromptManager:
                 FROM customers c
                 INNER JOIN (
                     SELECT customer_id, COUNT(*) as memo_count 
-                    FROM memos 
+                    FROM customer_memos 
                     GROUP BY customer_id 
                     HAVING COUNT(*) >= 5
                 ) memo_counts ON c.customer_id = memo_counts.customer_id
@@ -151,13 +151,13 @@ class NLSearchPromptManager:
                 WITH monthly_stats AS (
                     SELECT 
                         DATE_TRUNC('month', c.created_at) as month,
-                        COUNT(DISTINCT c.id) as new_customers,
-                        AVG(LENGTH(m.content)) as avg_memo_length,
-                        COUNT(DISTINCT CASE WHEN e.status != 'completed' THEN e.id END) as incomplete_events,
-                        COUNT(DISTINCT e.id) as total_events
+                        COUNT(DISTINCT c.customer_id) as new_customers,
+                        AVG(LENGTH(m.original_memo)) as avg_memo_length,
+                        COUNT(DISTINCT CASE WHEN e.status != 'completed' THEN e.event_id END) as incomplete_events,
+                        COUNT(DISTINCT e.event_id) as total_events
                     FROM customers c
-                    LEFT JOIN memos m ON c.id = m.customer_id
-                    LEFT JOIN events e ON c.id = e.customer_id
+                    LEFT JOIN customer_memos m ON c.customer_id = m.customer_id
+                    LEFT JOIN events e ON c.customer_id = e.customer_id
                     WHERE c.created_at >= CURRENT_DATE - INTERVAL '3 months'
                     GROUP BY DATE_TRUNC('month', c.created_at)
                 )
@@ -219,8 +219,8 @@ class NLSearchPromptManager:
                 
                 for table_name, table in metadata.tables.items():
                     # 허용된 테이블만 포함
-                    allowed_tables = {'customers', 'memos', 'events', 'users', 'prompts', 
-                                    'prompt_templates', 'prompt_logs', 'customer_analytics'}
+                    allowed_tables = {'users', 'customers', 'customer_memos', 'customer_products', 
+                                    'events', 'prompt_templates'}
                     
                     if table_name not in allowed_tables:
                         continue
@@ -278,6 +278,20 @@ class NLSearchPromptManager:
         """데이터베이스 연결 실패 시 사용할 기본 스키마"""
         return [
             TableSchema(
+                name="users",
+                columns=[
+                    {"name": "id", "type": "BIGSERIAL", "nullable": False},
+                    {"name": "name", "type": "VARCHAR(30)", "nullable": False},
+                    {"name": "email", "type": "VARCHAR(60)", "nullable": False},
+                    {"name": "phone", "type": "VARCHAR(30)", "nullable": False},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": True},
+                    {"name": "updated_at", "type": "TIMESTAMPTZ", "nullable": True}
+                ],
+                primary_keys=["id"],
+                foreign_keys=[],
+                indexes=["idx_users_email"]
+            ),
+            TableSchema(
                 name="customers",
                 columns=[
                     {"name": "customer_id", "type": "UUID", "nullable": False},
@@ -288,41 +302,80 @@ class NLSearchPromptManager:
                     {"name": "phone", "type": "VARCHAR(20)", "nullable": True},
                     {"name": "address", "type": "VARCHAR(500)", "nullable": True},
                     {"name": "job_title", "type": "VARCHAR(100)", "nullable": True},
-                    {"name": "created_at", "type": "TIMESTAMP", "nullable": False},
-                    {"name": "updated_at", "type": "TIMESTAMP", "nullable": False}
+                    {"name": "user_id", "type": "INT8", "nullable": True},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": True},
+                    {"name": "updated_at", "type": "TIMESTAMPTZ", "nullable": True}
                 ],
                 primary_keys=["customer_id"],
-                foreign_keys=[],
-                indexes=["idx_customers_name"]
+                foreign_keys=[{"column": "user_id", "references_table": "users", "references_column": "id"}],
+                indexes=["uk_customers_name_phone"]
             ),
             TableSchema(
-                name="memos",
+                name="customer_memos",
                 columns=[
-                    {"name": "id", "type": "INTEGER", "nullable": False},
-                    {"name": "customer_id", "type": "UUID", "nullable": False},
-                    {"name": "content", "type": "TEXT", "nullable": False},
-                    {"name": "refined_content", "type": "TEXT", "nullable": True},
-                    {"name": "created_at", "type": "TIMESTAMP", "nullable": False},
-                    {"name": "updated_at", "type": "TIMESTAMP", "nullable": False}
+                    {"name": "id", "type": "UUID", "nullable": False},
+                    {"name": "customer_id", "type": "UUID", "nullable": True},
+                    {"name": "original_memo", "type": "TEXT", "nullable": False},
+                    {"name": "refined_memo", "type": "JSONB", "nullable": True},
+                    {"name": "status", "type": "VARCHAR(20)", "nullable": True},
+                    {"name": "author", "type": "VARCHAR(100)", "nullable": True},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": True}
                 ],
                 primary_keys=["id"],
                 foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "customer_id"}],
-                indexes=["idx_memos_customer_id"]
+                indexes=[]
+            ),
+            TableSchema(
+                name="customer_products",
+                columns=[
+                    {"name": "product_id", "type": "UUID", "nullable": False},
+                    {"name": "customer_id", "type": "UUID", "nullable": False},
+                    {"name": "product_name", "type": "VARCHAR(200)", "nullable": True},
+                    {"name": "coverage_amount", "type": "VARCHAR(50)", "nullable": True},
+                    {"name": "subscription_date", "type": "TIMESTAMP", "nullable": True},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": True},
+                    {"name": "updated_at", "type": "TIMESTAMPTZ", "nullable": True}
+                ],
+                primary_keys=["product_id"],
+                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "customer_id"}],
+                indexes=["ix_customer_products_customer_id"]
             ),
             TableSchema(
                 name="events",
                 columns=[
-                    {"name": "id", "type": "INTEGER", "nullable": False},
-                    {"name": "customer_id", "type": "UUID", "nullable": False},
-                    {"name": "event_type", "type": "VARCHAR", "nullable": False},
-                    {"name": "priority", "type": "VARCHAR", "nullable": False},
-                    {"name": "status", "type": "VARCHAR", "nullable": False},
-                    {"name": "due_date", "type": "DATE", "nullable": True},
-                    {"name": "created_at", "type": "TIMESTAMP", "nullable": False}
+                    {"name": "event_id", "type": "UUID", "nullable": False},
+                    {"name": "customer_id", "type": "UUID", "nullable": True},
+                    {"name": "memo_id", "type": "UUID", "nullable": True},
+                    {"name": "event_type", "type": "VARCHAR(50)", "nullable": False},
+                    {"name": "scheduled_date", "type": "TIMESTAMP", "nullable": True},
+                    {"name": "priority", "type": "VARCHAR(10)", "nullable": True},
+                    {"name": "status", "type": "VARCHAR(20)", "nullable": True},
+                    {"name": "description", "type": "TEXT", "nullable": True},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": True}
+                ],
+                primary_keys=["event_id"],
+                foreign_keys=[
+                    {"column": "customer_id", "references_table": "customers", "references_column": "customer_id"},
+                    {"column": "memo_id", "references_table": "customer_memos", "references_column": "id"}
+                ],
+                indexes=[]
+            ),
+            TableSchema(
+                name="prompt_templates",
+                columns=[
+                    {"name": "id", "type": "UUID", "nullable": False},
+                    {"name": "name", "type": "VARCHAR(100)", "nullable": False},
+                    {"name": "description", "type": "TEXT", "nullable": True},
+                    {"name": "category", "type": "VARCHAR(50)", "nullable": False},
+                    {"name": "template_content", "type": "TEXT", "nullable": False},
+                    {"name": "variables", "type": "JSONB", "nullable": True},
+                    {"name": "is_active", "type": "BOOL", "nullable": False},
+                    {"name": "created_at", "type": "TIMESTAMPTZ", "nullable": False},
+                    {"name": "updated_at", "type": "TIMESTAMPTZ", "nullable": False}
                 ],
                 primary_keys=["id"],
-                foreign_keys=[{"column": "customer_id", "references_table": "customers", "references_column": "customer_id"}],
-                indexes=["idx_events_customer_id", "idx_events_priority"]
+                foreign_keys=[],
+                indexes=["ix_prompt_templates_category", "ix_prompt_templates_is_active"]
             )
         ]
     

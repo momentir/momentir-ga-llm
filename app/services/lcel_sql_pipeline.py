@@ -537,9 +537,9 @@ class LCELSQLPipeline:
         async def validate_sql(sql_result: SQLGenerationResult) -> SQLGenerationResult:
             try:
                 # SQL 보안 검증
-                is_safe = await sql_validator.validate_query_safety(sql_result.sql)
+                validation_report = sql_validator.validate_sql(sql_result.sql)
                 
-                if not is_safe:
+                if not validation_report.execution_allowed:
                     logger.warning(f"안전하지 않은 SQL 감지: {sql_result.sql}")
                     # 안전하지 않은 쿼리는 기본 쿼리로 대체
                     sql_result.sql = "SELECT 1 as validation_failed"

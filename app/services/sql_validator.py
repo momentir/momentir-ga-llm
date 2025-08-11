@@ -62,19 +62,17 @@ class SQLSecurityValidator:
         """검증기 초기화"""
         # 화이트리스트 기반 허용된 테이블과 컬럼
         self.allowed_tables = {
-            'customers', 'memos', 'events', 'users', 'prompts',
-            'prompt_templates', 'prompt_logs', 'customer_analytics'
+            'users', 'customers', 'customer_memos', 'customer_products', 
+            'events', 'prompt_templates'
         }
         
         self.allowed_columns = {
-            'customers': {'customer_id', 'name', 'affiliation', 'gender', 'date_of_birth', 'phone', 'address', 'job_title', 'created_at', 'updated_at'},
-            'memos': {'id', 'customer_id', 'content', 'refined_content', 'created_at', 'updated_at'},
-            'events': {'id', 'customer_id', 'event_type', 'priority', 'due_date', 'created_at'},
-            'users': {'id', 'email', 'name', 'created_at'},
-            'prompts': {'id', 'name', 'content', 'created_at'},
-            'prompt_templates': {'id', 'name', 'template', 'variables', 'created_at'},
-            'prompt_logs': {'id', 'prompt_id', 'input_data', 'output_data', 'created_at'},
-            'customer_analytics': {'customer_id', 'metric_name', 'metric_value', 'created_at'}
+            'users': {'id', 'name', 'email', 'phone', 'created_at', 'updated_at'},
+            'customers': {'customer_id', 'name', 'affiliation', 'gender', 'date_of_birth', 'phone', 'address', 'job_title', 'user_id', 'created_at', 'updated_at'},
+            'customer_memos': {'id', 'customer_id', 'original_memo', 'refined_memo', 'status', 'author', 'created_at'},
+            'customer_products': {'product_id', 'customer_id', 'product_name', 'coverage_amount', 'subscription_date', 'created_at', 'updated_at'},
+            'events': {'event_id', 'customer_id', 'memo_id', 'event_type', 'scheduled_date', 'priority', 'status', 'description', 'created_at'},
+            'prompt_templates': {'id', 'name', 'description', 'category', 'template_content', 'variables', 'is_active', 'created_at', 'updated_at'}
         }
         
         # OWASP 기반 위험한 키워드 패턴들
