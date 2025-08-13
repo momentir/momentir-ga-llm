@@ -26,7 +26,7 @@ from app.database import read_only_db_manager
 logger = logging.getLogger(__name__)
 
 # API 라우터 생성
-router = APIRouter(prefix="/api/lcel-sql", tags=["LCEL SQL Pipeline"])
+router = APIRouter(prefix="/v1/api/lcel-sql", tags=["LCEL SQL Pipeline"])
 
 
 @router.post(

@@ -72,7 +72,7 @@ class CustomerProductsAPITester:
             }
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/create",
+                f"{self.base_url}/v1/api/customer/create",
                 json=customer_data
             ) as response:
                 if response.status == 200:
@@ -113,7 +113,7 @@ class CustomerProductsAPITester:
             }
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}",
+                f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}",
                 json=product_data
             ) as response:
                 if response.status == 200:
@@ -166,7 +166,7 @@ class CustomerProductsAPITester:
         
         try:
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}"
             ) as response:
                 if response.status == 200:
                     result = await response.json()
@@ -223,7 +223,7 @@ class CustomerProductsAPITester:
             }
             
             async with self.session.put(
-                f"{self.base_url}/api/customer/{customer_id}/products/{product_id}?user_id={user_id}",
+                f"{self.base_url}/v1/api/customer/{customer_id}/products/{product_id}?user_id={user_id}",
                 json=update_data
             ) as response:
                 if response.status == 200:
@@ -294,7 +294,7 @@ class CustomerProductsAPITester:
         try:
             for product_data in products_data:
                 async with self.session.post(
-                    f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}",
+                    f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}",
                     json=product_data
                 ) as response:
                     if response.status == 200:
@@ -331,7 +331,7 @@ class CustomerProductsAPITester:
         try:
             # 1. 고객 정보 조회
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}?user_id={user_id}"
             ) as response:
                 if response.status != 200:
                     self.log_test_result(test_name, False, "고객 정보 조회 실패")
@@ -342,7 +342,7 @@ class CustomerProductsAPITester:
             
             # 2. 별도 API로 가입상품 목록 조회
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}"
             ) as response:
                 if response.status != 200:
                     self.log_test_result(test_name, False, "가입상품 목록 조회 실패")
@@ -412,7 +412,7 @@ class CustomerProductsAPITester:
         try:
             # 삭제 전 상품 존재 확인
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}"
             ) as response:
                 if response.status == 200:
                     products_before = await response.json()
@@ -423,14 +423,14 @@ class CustomerProductsAPITester:
             
             # 상품 삭제
             async with self.session.delete(
-                f"{self.base_url}/api/customer/{customer_id}/products/{product_id}?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}/products/{product_id}?user_id={user_id}"
             ) as response:
                 if response.status == 200:
                     result = await response.json()
                     
                     # 삭제 후 상품 목록 확인
                     async with self.session.get(
-                        f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}"
+                        f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}"
                     ) as response:
                         if response.status == 200:
                             products_after = await response.json()
@@ -477,28 +477,28 @@ class CustomerProductsAPITester:
             {
                 "name": "존재하지 않는 고객 상품 생성",
                 "method": "POST",
-                "url": f"/api/customer/{str(uuid.uuid4())}/products?user_id={user_id}",
+                "url": f"/v1/api/customer/{str(uuid.uuid4())}/products?user_id={user_id}",
                 "data": {"product_name": "테스트상품"},
                 "expected_status": 404
             },
             {
                 "name": "존재하지 않는 상품 수정",
                 "method": "PUT", 
-                "url": f"/api/customer/{customer_id}/products/{str(uuid.uuid4())}?user_id={user_id}",
+                "url": f"/v1/api/customer/{customer_id}/products/{str(uuid.uuid4())}?user_id={user_id}",
                 "data": {"product_name": "수정테스트"},
                 "expected_status": 404
             },
             {
                 "name": "존재하지 않는 상품 삭제",
                 "method": "DELETE",
-                "url": f"/api/customer/{customer_id}/products/{str(uuid.uuid4())}?user_id={user_id}",
+                "url": f"/v1/api/customer/{customer_id}/products/{str(uuid.uuid4())}?user_id={user_id}",
                 "data": None,
                 "expected_status": 404
             },
             {
                 "name": "잘못된 UUID 형식",
                 "method": "GET",
-                "url": f"/api/customer/{customer_id}/products/invalid-uuid?user_id={user_id}",
+                "url": f"/v1/api/customer/{customer_id}/products/invalid-uuid?user_id={user_id}",
                 "data": None,
                 "expected_status": 400
             }
@@ -553,7 +553,7 @@ class CustomerProductsAPITester:
         try:
             # 테스트 고객 삭제
             async with self.session.delete(
-                f"{self.base_url}/api/customer/{customer_id}?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}?user_id={user_id}"
             ) as response:
                 if response.status == 200:
                     self.log_test_result(

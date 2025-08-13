@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/memo", tags=["memo"])
+router = APIRouter(prefix="/v1/api/memo", tags=["memo"])
 memo_refiner = MemoRefinerService()
 
 

@@ -110,7 +110,7 @@ class ExcelUploadTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 200:
@@ -174,7 +174,7 @@ class ExcelUploadTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 200:
@@ -271,7 +271,7 @@ class ExcelUploadTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 200:
@@ -330,7 +330,7 @@ class ExcelUploadTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 200:
@@ -343,7 +343,7 @@ class ExcelUploadTester:
                     if created_customers > 0 and len(errors) == 0:
                         # 생성된 고객 데이터 확인
                         async with self.session.get(
-                            f"{self.base_url}/api/customer/?user_id={user_id}&search=검증테스트"
+                            f"{self.base_url}/v1/api/customer/?user_id={user_id}&search=검증테스트"
                         ) as customer_response:
                             if customer_response.status == 200:
                                 customers = await customer_response.json()
@@ -423,7 +423,7 @@ class ExcelUploadTester:
                                   content_type=error_test["content_type"])
                 
                 async with self.session.post(
-                    f"{self.base_url}/api/customer/excel-upload",
+                    f"{self.base_url}/v1/api/customer/excel-upload",
                     data=form_data
                 ) as response:
                     if response.status == error_test["expected_status"]:
@@ -480,7 +480,7 @@ class ExcelUploadTester:
             timeout = aiohttp.ClientTimeout(total=300)  # 5분 타임아웃
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data,
                 timeout=timeout
             ) as response:

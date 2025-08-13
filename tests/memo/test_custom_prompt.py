@@ -4,7 +4,7 @@ import json
 import time
 
 def test_custom_prompt():
-    url = "http://localhost:8000/api/memo/refine"
+    url = "http://localhost:8000/v1/api/memo/refine"
     
     # Test 1: Without custom_prompt
     print("=== Test 1: Without custom_prompt ===")

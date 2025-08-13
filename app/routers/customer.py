@@ -17,7 +17,7 @@ from app.services.memo_refiner import MemoRefinerService
 from app.database import get_db
 from datetime import datetime
 
-router = APIRouter(prefix="/api/customer", tags=["customer"])
+router = APIRouter(prefix="/v1/api/customer", tags=["customer"])
 customer_service = CustomerService()
 memo_refiner = MemoRefinerService()
 

@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # FastAPI 0.104+ 스타일 라우터 생성
 router = APIRouter(
-    prefix="/api/search",
+    prefix="/v1/api/search",
     tags=["Natural Language Search"],
     responses={
         404: {"description": "검색 결과를 찾을 수 없습니다"},

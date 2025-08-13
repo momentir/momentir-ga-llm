@@ -207,7 +207,7 @@ class CloudWatchMonitoringTester:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 # 자연어 검색 API 테스트
                 response = await client.post(
-                    f"{self.base_url}/api/search/natural-language",
+                    f"{self.base_url}/v1/api/search/natural-language",
                     json=search_request
                 )
                 
@@ -261,7 +261,7 @@ class CloudWatchMonitoringTester:
                 
                 start_time = time.time()
                 response = await client.post(
-                    f"{self.base_url}/api/search/natural-language",
+                    f"{self.base_url}/v1/api/search/natural-language",
                     json=search_request
                 )
                 end_time = time.time()

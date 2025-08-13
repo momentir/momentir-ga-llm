@@ -78,7 +78,7 @@ class UserPermissionsTester:
                     }
                     
                     async with self.session.post(
-                        f"{self.base_url}/api/customer/create",
+                        f"{self.base_url}/v1/api/customer/create",
                         json=customer_data
                     ) as response:
                         if response.status == 200:
@@ -95,7 +95,7 @@ class UserPermissionsTester:
                             }
                             
                             async with self.session.post(
-                                f"{self.base_url}/api/customer/{customer_id}/products?user_id={user_id}",
+                                f"{self.base_url}/v1/api/customer/{customer_id}/products?user_id={user_id}",
                                 json=product_data
                             ) as prod_response:
                                 if prod_response.status == 200:
@@ -142,7 +142,7 @@ class UserPermissionsTester:
             
             # 1. 고객 목록 조회 (자신의 고객만 표시되어야 함)
             async with self.session.get(
-                f"{self.base_url}/api/customer/?user_id={user_id}"
+                f"{self.base_url}/v1/api/customer/?user_id={user_id}"
             ) as response:
                 if response.status == 200:
                     customers = await response.json()
@@ -157,7 +157,7 @@ class UserPermissionsTester:
             if user_data["customers"]:
                 customer_id = user_data["customers"][0]
                 async with self.session.get(
-                    f"{self.base_url}/api/customer/{customer_id}?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{customer_id}?user_id={user_id}"
                 ) as response:
                     if response.status == 200:
                         access_tests.append("본인 고객 조회 성공")
@@ -168,7 +168,7 @@ class UserPermissionsTester:
             if user_data["products"]:
                 product_info = user_data["products"][0]
                 async with self.session.get(
-                    f"{self.base_url}/api/customer/{product_info['customer_id']}/products?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{product_info['customer_id']}/products?user_id={user_id}"
                 ) as response:
                     if response.status == 200:
                         access_tests.append("본인 고객 상품 조회 성공")
@@ -181,7 +181,7 @@ class UserPermissionsTester:
                 update_data = {"notes": f"사용자{user_id} 수정 테스트"}
                 
                 async with self.session.put(
-                    f"{self.base_url}/api/customer/{customer_id}?user_id={user_id}",
+                    f"{self.base_url}/v1/api/customer/{customer_id}?user_id={user_id}",
                     json=update_data
                 ) as response:
                     if response.status == 200:
@@ -225,7 +225,7 @@ class UserPermissionsTester:
                 target_customer_id = target_data["customers"][0]
                 
                 async with self.session.get(
-                    f"{self.base_url}/api/customer/{target_customer_id}?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{target_customer_id}?user_id={user_id}"
                 ) as response:
                     if response.status == 403:
                         blocked_tests.append("타인 고객 조회 차단 성공")
@@ -238,7 +238,7 @@ class UserPermissionsTester:
                 update_data = {"notes": f"사용자{user_id} 무단 수정 시도"}
                 
                 async with self.session.put(
-                    f"{self.base_url}/api/customer/{target_customer_id}?user_id={user_id}",
+                    f"{self.base_url}/v1/api/customer/{target_customer_id}?user_id={user_id}",
                     json=update_data
                 ) as response:
                     if response.status == 403:
@@ -251,7 +251,7 @@ class UserPermissionsTester:
                 target_customer_id = target_data["customers"][0]
                 
                 async with self.session.delete(
-                    f"{self.base_url}/api/customer/{target_customer_id}?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{target_customer_id}?user_id={user_id}"
                 ) as response:
                     if response.status == 403:
                         blocked_tests.append("타인 고객 삭제 차단 성공")
@@ -263,7 +263,7 @@ class UserPermissionsTester:
                 product_info = target_data["products"][0]
                 
                 async with self.session.get(
-                    f"{self.base_url}/api/customer/{product_info['customer_id']}/products?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{product_info['customer_id']}/products?user_id={user_id}"
                 ) as response:
                     if response.status == 403:
                         blocked_tests.append("타인 고객 상품 조회 차단 성공")
@@ -279,7 +279,7 @@ class UserPermissionsTester:
                 }
                 
                 async with self.session.post(
-                    f"{self.base_url}/api/customer/{target_customer_id}/products?user_id={user_id}",
+                    f"{self.base_url}/v1/api/customer/{target_customer_id}/products?user_id={user_id}",
                     json=product_data
                 ) as response:
                     if response.status == 403:
@@ -293,7 +293,7 @@ class UserPermissionsTester:
                 update_data = {"product_name": "무단수정상품"}
                 
                 async with self.session.put(
-                    f"{self.base_url}/api/customer/{product_info['customer_id']}/products/{product_info['product_id']}?user_id={user_id}",
+                    f"{self.base_url}/v1/api/customer/{product_info['customer_id']}/products/{product_info['product_id']}?user_id={user_id}",
                     json=update_data
                 ) as response:
                     if response.status == 403:
@@ -306,7 +306,7 @@ class UserPermissionsTester:
                 product_info = target_data["products"][0]
                 
                 async with self.session.delete(
-                    f"{self.base_url}/api/customer/{product_info['customer_id']}/products/{product_info['product_id']}?user_id={user_id}"
+                    f"{self.base_url}/v1/api/customer/{product_info['customer_id']}/products/{product_info['product_id']}?user_id={user_id}"
                 ) as response:
                     if response.status == 403:
                         blocked_tests.append("타인 상품 삭제 차단 성공")
@@ -353,7 +353,7 @@ class UserPermissionsTester:
             
             # 1. user_id 없이 고객 조회
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}"
+                f"{self.base_url}/v1/api/customer/{customer_id}"
             ) as response:
                 # user_id가 선택적 파라미터이므로 200이 나와야 함 (모든 데이터 표시)
                 if response.status == 200:
@@ -363,7 +363,7 @@ class UserPermissionsTester:
             
             # 2. user_id 없이 고객 목록 조회
             async with self.session.get(
-                f"{self.base_url}/api/customer/"
+                f"{self.base_url}/v1/api/customer/"
             ) as response:
                 if response.status == 200:
                     customers = await response.json()
@@ -379,7 +379,7 @@ class UserPermissionsTester:
             # 3. user_id 없이 상품 조회
             if self.test_users[first_user]["products"]:
                 async with self.session.get(
-                    f"{self.base_url}/api/customer/{customer_id}/products"
+                    f"{self.base_url}/v1/api/customer/{customer_id}/products"
                 ) as response:
                     if response.status == 200:
                         access_tests.append("user_id 없이 상품 조회 허용")
@@ -415,7 +415,7 @@ class UserPermissionsTester:
             
             # 1. 존재하지 않는 user_id
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}?user_id=99999"
+                f"{self.base_url}/v1/api/customer/{customer_id}?user_id=99999"
             ) as response:
                 if response.status == 403:
                     invalid_tests.append("존재하지 않는 user_id 차단 성공")
@@ -424,7 +424,7 @@ class UserPermissionsTester:
             
             # 2. 음수 user_id
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}?user_id=-1"
+                f"{self.base_url}/v1/api/customer/{customer_id}?user_id=-1"
             ) as response:
                 if response.status in [400, 403, 422]:  # 유효하지 않은 값으로 처리
                     invalid_tests.append("음수 user_id 차단 성공")
@@ -433,7 +433,7 @@ class UserPermissionsTester:
             
             # 3. 문자열 user_id
             async with self.session.get(
-                f"{self.base_url}/api/customer/{customer_id}?user_id=invalid"
+                f"{self.base_url}/v1/api/customer/{customer_id}?user_id=invalid"
             ) as response:
                 if response.status == 422:  # FastAPI validation error
                     invalid_tests.append("문자열 user_id 차단 성공")
@@ -491,7 +491,7 @@ class UserPermissionsTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 200:
@@ -510,7 +510,7 @@ class UserPermissionsTester:
                               content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             
             async with self.session.post(
-                f"{self.base_url}/api/customer/excel-upload",
+                f"{self.base_url}/v1/api/customer/excel-upload",
                 data=form_data
             ) as response:
                 if response.status == 404:  # 사용자 없음
@@ -548,7 +548,7 @@ class UserPermissionsTester:
                 for customer_id in data["customers"]:
                     try:
                         async with self.session.delete(
-                            f"{self.base_url}/api/customer/{customer_id}?user_id={user_id}"
+                            f"{self.base_url}/v1/api/customer/{customer_id}?user_id={user_id}"
                         ) as response:
                             if response.status == 200:
                                 cleanup_count += 1

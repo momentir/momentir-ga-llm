@@ -20,7 +20,7 @@ echo "2. API 엔드포인트 테스트 중..."
 
 # 2-1. 대시보드 데이터 조회
 echo "  - 대시보드 데이터 조회..."
-dashboard_response=$(curl -s "http://127.0.0.1:8000/api/search-analytics/dashboard?days=7")
+dashboard_response=$(curl -s "http://127.0.0.1:8000/v1/api/search-analytics/dashboard?days=7")
 if [[ $? -eq 0 ]]; then
     echo "  ✅ 대시보드 API 응답 성공"
     echo "     응답: ${dashboard_response:0:100}..."
@@ -30,7 +30,7 @@ fi
 
 # 2-2. 인기 검색어 조회
 echo "  - 인기 검색어 조회..."
-popular_response=$(curl -s "http://127.0.0.1:8000/api/search-analytics/popular-queries?limit=5&days=7")
+popular_response=$(curl -s "http://127.0.0.1:8000/v1/api/search-analytics/popular-queries?limit=5&days=7")
 if [[ $? -eq 0 ]]; then
     echo "  ✅ 인기 검색어 API 응답 성공"
     echo "     응답: ${popular_response:0:100}..."
@@ -40,7 +40,7 @@ fi
 
 # 2-3. 성능 통계 조회
 echo "  - 성능 통계 조회..."
-performance_response=$(curl -s "http://127.0.0.1:8000/api/search-analytics/performance-stats?days=7")
+performance_response=$(curl -s "http://127.0.0.1:8000/v1/api/search-analytics/performance-stats?days=7")
 if [[ $? -eq 0 ]]; then
     echo "  ✅ 성능 통계 API 응답 성공"
     echo "     응답: ${performance_response:0:100}..."
@@ -50,7 +50,7 @@ fi
 
 # 2-4. 실패 패턴 조회
 echo "  - 실패 패턴 조회..."
-failure_response=$(curl -s "http://127.0.0.1:8000/api/search-analytics/failure-patterns?limit=5&min_failure_rate=0.5")
+failure_response=$(curl -s "http://127.0.0.1:8000/v1/api/search-analytics/failure-patterns?limit=5&min_failure_rate=0.5")
 if [[ $? -eq 0 ]]; then
     echo "  ✅ 실패 패턴 API 응답 성공"
     echo "     응답: ${failure_response:0:100}..."
@@ -104,7 +104,7 @@ sample_data='{
 }'
 
 echo "  - 샘플 검색 기록 생성..."
-record_response=$(curl -s -X POST "http://127.0.0.1:8000/api/search-analytics/record" \
+record_response=$(curl -s -X POST "http://127.0.0.1:8000/v1/api/search-analytics/record" \
   -H "Content-Type: application/json" \
   -d "$sample_data")
 
@@ -128,8 +128,8 @@ echo "  3. CloudWatch 대시보드 설정 (선택사항)"
 echo "  4. 성능 임계값 알림 설정"
 echo ""
 echo "📊 API 엔드포인트:"
-echo "  - 대시보드: GET /api/search-analytics/dashboard"
-echo "  - 인기 검색어: GET /api/search-analytics/popular-queries"
-echo "  - 성능 통계: GET /api/search-analytics/performance-stats"
-echo "  - 실패 패턴: GET /api/search-analytics/failure-patterns"
-echo "  - 기록 저장: POST /api/search-analytics/record"
+echo "  - 대시보드: GET /v1/api/search-analytics/dashboard"
+echo "  - 인기 검색어: GET /v1/api/search-analytics/popular-queries"
+echo "  - 성능 통계: GET /v1/api/search-analytics/performance-stats"
+echo "  - 실패 패턴: GET /v1/api/search-analytics/failure-patterns"
+echo "  - 기록 저장: POST /v1/api/search-analytics/record"

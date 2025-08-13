@@ -11,7 +11,7 @@ def test_urgent_events_today():
     """오늘의 긴급 이벤트 테스트"""
     print("=== 오늘의 긴급 이벤트 테스트 ===")
     
-    url = "http://localhost:8000/api/events/urgent-today"
+    url = "http://localhost:8000/v1/api/events/urgent-today"
     
     try:
         response = requests.get(url)

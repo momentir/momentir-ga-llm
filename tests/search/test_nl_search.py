@@ -34,7 +34,7 @@ class TestNLSearch:
         
         # Test API base URL
         cls.base_url = "http://127.0.0.1:8000"
-        cls.search_endpoint = f"{cls.base_url}/api/search/natural-language"
+        cls.search_endpoint = f"{cls.base_url}/v1/api/search/natural-language"
     
     @classmethod
     async def teardown_class(cls):

@@ -9,7 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/events", tags=["events"])
+router = APIRouter(prefix="/v1/api/events", tags=["events"])
 
 
 class EventProcessRequest(BaseModel):

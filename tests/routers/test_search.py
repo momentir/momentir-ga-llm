@@ -104,7 +104,7 @@ class TestSearchAPI:
     
     def test_get_search_strategies(self, client):
         """검색 전략 목록 조회 테스트"""
-        response = client.get("/api/search/strategies")
+        response = client.get("/v1/api/search/strategies")
         
         assert response.status_code == 200
         data = response.json()
@@ -125,7 +125,7 @@ class TestSearchAPI:
     
     def test_search_health_check(self, client):
         """검색 서비스 헬스체크 테스트"""
-        response = client.get("/api/search/health")
+        response = client.get("/v1/api/search/health")
         
         assert response.status_code == 200
         data = response.json()
@@ -171,7 +171,7 @@ class TestSearchAPI:
             "limit": 100
         }
         
-        response = client.post("/api/search/natural-language", json=request_data)
+        response = client.post("/v1/api/search/natural-language", json=request_data)
         
         assert response.status_code == 200
         data = response.json()
@@ -203,7 +203,7 @@ class TestSearchAPI:
             "limit": 10
         }
         
-        response = client.post("/api/search/natural-language", json=request_data)
+        response = client.post("/v1/api/search/natural-language", json=request_data)
         
         assert response.status_code == 400
         assert "SQL 생성 실패" in response.json()["detail"]
@@ -211,18 +211,18 @@ class TestSearchAPI:
     def test_natural_language_search_validation_error(self, client):
         """입력 검증 오류 테스트"""
         # 빈 쿼리
-        response = client.post("/api/search/natural-language", json={"query": ""})
+        response = client.post("/v1/api/search/natural-language", json={"query": ""})
         assert response.status_code == 422
         
         # 잘못된 limit
-        response = client.post("/api/search/natural-language", json={
+        response = client.post("/v1/api/search/natural-language", json={
             "query": "테스트", 
             "limit": 0
         })
         assert response.status_code == 422
         
         # 잘못된 전략
-        response = client.post("/api/search/natural-language", json={
+        response = client.post("/v1/api/search/natural-language", json={
             "query": "테스트",
             "options": {"strategy": "invalid_strategy"}
         })
@@ -318,11 +318,11 @@ class TestSearchIntegration:
         """검색 API 통합 흐름 테스트"""
         
         # 1. 헬스체크
-        health_response = client.get("/api/search/health")
+        health_response = client.get("/v1/api/search/health")
         assert health_response.status_code == 200
         
         # 2. 전략 목록 조회
-        strategies_response = client.get("/api/search/strategies")
+        strategies_response = client.get("/v1/api/search/strategies")
         assert strategies_response.status_code == 200
         strategies_data = strategies_response.json()
         assert "strategies" in strategies_data
@@ -339,7 +339,7 @@ class TestSearchIntegration:
                 "limit": 1
             }
             
-            search_response = client.post("/api/search/natural-language", json=search_request)
+            search_response = client.post("/v1/api/search/natural-language", json=search_request)
             
             # 성공하거나 적절한 오류 응답이어야 함
             assert search_response.status_code in [200, 400, 500]
@@ -391,7 +391,7 @@ class TestSearchPerformance:
         
         # 응답 시간 측정
         start_time = time.time()
-        response = client.post("/api/search/natural-language", json=request_data)
+        response = client.post("/v1/api/search/natural-language", json=request_data)
         end_time = time.time()
         
         assert response.status_code == 200
@@ -407,7 +407,7 @@ class TestSearchPerformance:
         import time
         
         def make_request():
-            return client.get("/api/search/strategies")
+            return client.get("/v1/api/search/strategies")
         
         # 10개의 동시 요청
         start_time = time.time()

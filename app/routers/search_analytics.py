@@ -19,7 +19,7 @@ from app.models.search_models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/search-analytics", tags=["search-analytics"])
+router = APIRouter(prefix="/v1/api/search-analytics", tags=["search-analytics"])
 
 
 @router.post("/record", status_code=201)

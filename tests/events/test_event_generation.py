@@ -12,7 +12,7 @@ def test_process_memo_for_events(memo_id):
     """특정 메모에서 이벤트 생성 테스트"""
     print(f"=== 메모 {memo_id}에서 이벤트 생성 테스트 ===")
     
-    url = "http://localhost:8000/api/events/process-memo"
+    url = "http://localhost:8000/v1/api/events/process-memo"
     data = {"memo_id": memo_id}
     
     try:
@@ -42,7 +42,7 @@ def test_create_memo_and_events():
     print("=== 전체 플로우 테스트 ===")
     
     # 1. 먼저 메모 정제
-    memo_url = "http://localhost:8000/api/memo/refine"
+    memo_url = "http://localhost:8000/v1/api/memo/refine"
     test_memo = {
         "memo": "다음 주 화요일 오후 2시에 박민수 고객과 건강보험 상담 예정. 상담 후 1주일 뒤에 카톡으로 결과 안내하기. 긴급 처리 필요."
     }
@@ -78,7 +78,7 @@ def test_events_after_creation():
     print("\n=== 이벤트 생성 후 조회 테스트 ===")
     
     # 향후 이벤트 조회
-    url = "http://localhost:8000/api/events/upcoming"
+    url = "http://localhost:8000/v1/api/events/upcoming"
     params = {"days": 30}
     
     try:

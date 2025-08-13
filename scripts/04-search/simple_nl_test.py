@@ -41,7 +41,7 @@ async def simple_test():
         "화재보험 고객"
     ]
     
-    search_endpoint = "http://127.0.0.1:8000/api/search/natural-language"
+    search_endpoint = "http://127.0.0.1:8000/v1/api/search/natural-language"
     
     for i, query in enumerate(test_queries, 1):
         print(f"\n   Test {i}: '{query}'")

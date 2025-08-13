@@ -37,7 +37,7 @@ echo ""
 # 고객 생성 테스트
 echo ""
 echo "👤 고객 생성 테스트..."
-CUSTOMER_RESPONSE=$(curl -s -X POST "${SERVER_URL}/api/customer/create" \
+CUSTOMER_RESPONSE=$(curl -s -X POST "${SERVER_URL}/v1/api/customer/create" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "김테스트",
@@ -75,7 +75,7 @@ fi
 # 메모 빠른 저장 테스트
 echo ""
 echo "📝 메모 빠른 저장 테스트..."
-MEMO_RESPONSE=$(curl -s -X POST "${SERVER_URL}/api/memo/quick-save" \
+MEMO_RESPONSE=$(curl -s -X POST "${SERVER_URL}/v1/api/memo/quick-save" \
   -H "Content-Type: application/json" \
   -d "{
     \"customer_id\": \"$CUSTOMER_ID\",
@@ -103,7 +103,7 @@ fi
 # 컬럼 매핑 테스트
 echo ""
 echo "🗂️  컬럼 매핑 테스트..."
-curl -s -X POST "${SERVER_URL}/api/customer/column-mapping" \
+curl -s -X POST "${SERVER_URL}/v1/api/customer/column-mapping" \
   -H "Content-Type: application/json" \
   -d '{
     "excel_columns": ["성함", "전화번호", "직장", "성별", "생일", "관심분야"]
@@ -113,13 +113,13 @@ echo ""
 # 고객 목록 조회 테스트
 echo ""
 echo "📋 고객 목록 조회 테스트..."
-curl -s "${SERVER_URL}/api/customer/?limit=5" | python3 -m json.tool
+curl -s "${SERVER_URL}/v1/api/customer/?limit=5" | python3 -m json.tool
 echo ""
 
 # 고객 분석 통계 테스트
 echo ""
 echo "📊 고객 분석 통계 테스트..."
-curl -s "${SERVER_URL}/api/customer/${CUSTOMER_ID}/analytics" | python3 -m json.tool
+curl -s "${SERVER_URL}/v1/api/customer/${CUSTOMER_ID}/analytics" | python3 -m json.tool
 echo ""
 
 # 메모 조건부 분석 테스트 (OpenAI API 키가 있는 경우에만)
@@ -129,7 +129,7 @@ if [ "$OPENAI_API_KEY" != "test-key-for-local-development" ] && [ ! -z "$OPENAI_
     echo "   ➤ OpenAI API 키가 설정되어 있습니다. 실제 분석을 수행합니다..."
     
     # 먼저 메모를 정제
-    curl -s -X POST "${SERVER_URL}/api/memo/refine" \
+    curl -s -X POST "${SERVER_URL}/v1/api/memo/refine" \
       -H "Content-Type: application/json" \
       -d '{
         "memo": "고객이 건강보험 가입을 문의했습니다. 다음 주에 상세 상담 예정입니다."
@@ -138,7 +138,7 @@ if [ "$OPENAI_API_KEY" != "test-key-for-local-development" ] && [ ! -z "$OPENAI_
     
     # 조건부 분석 수행
     if [ "$MEMO_ID" != "error" ]; then
-        curl -s -X POST "${SERVER_URL}/api/memo/analyze" \
+        curl -s -X POST "${SERVER_URL}/v1/api/memo/analyze" \
           -H "Content-Type: application/json" \
           -d "{
             \"memo_id\": \"$MEMO_ID\",

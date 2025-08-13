@@ -12,7 +12,7 @@ def create_test_customers():
     """테스트 고객 데이터 생성"""
     print("=== 테스트 고객 데이터 생성 ===")
     
-    url = "http://localhost:8000/api/customer/create"
+    url = "http://localhost:8000/v1/api/customer/create"
     
     # 테스트 고객들
     test_customers = [
@@ -89,7 +89,7 @@ def test_generate_rule_based_events():
     """규칙 기반 이벤트 생성 테스트"""
     print("\n=== 규칙 기반 이벤트 생성 테스트 ===")
     
-    url = "http://localhost:8000/api/events/generate-rule-based"
+    url = "http://localhost:8000/v1/api/events/generate-rule-based"
     params = {"target_days": 365}
     
     try:
@@ -123,7 +123,7 @@ def test_priority_system():
     print("\n=== 우선순위 시스템 테스트 ===")
     
     # 1. 우선순위 업데이트
-    update_url = "http://localhost:8000/api/events/update-priorities"
+    update_url = "http://localhost:8000/v1/api/events/update-priorities"
     
     try:
         response = requests.put(update_url)
@@ -149,7 +149,7 @@ def test_priority_system():
     priorities = ['urgent', 'high', 'medium', 'low']
     
     for priority in priorities:
-        priority_url = f"http://localhost:8000/api/events/priority/{priority}"
+        priority_url = f"http://localhost:8000/v1/api/events/priority/{priority}"
         
         try:
             response = requests.get(priority_url, params={"days": 30})
@@ -175,7 +175,7 @@ def test_urgent_events_today():
     """오늘의 긴급 이벤트 테스트"""
     print("\n=== 오늘의 긴급 이벤트 테스트 ===")
     
-    url = "http://localhost:8000/api/events/urgent-today"
+    url = "http://localhost:8000/v1/api/events/urgent-today"
     
     try:
         response = requests.get(url)
@@ -207,7 +207,7 @@ def test_all_events_overview():
     print("\n=== 전체 이벤트 현황 ===")
     
     # 1. 향후 이벤트 조회
-    url = "http://localhost:8000/api/events/upcoming"
+    url = "http://localhost:8000/v1/api/events/upcoming"
     params = {"days": 30}
     
     try:
@@ -234,7 +234,7 @@ def test_all_events_overview():
         return False
     
     # 2. 이벤트 통계
-    stats_url = "http://localhost:8000/api/events/statistics"
+    stats_url = "http://localhost:8000/v1/api/events/statistics"
     
     try:
         response = requests.get(stats_url)

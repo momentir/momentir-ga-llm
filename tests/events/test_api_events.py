@@ -12,7 +12,7 @@ def test_memo_refine_with_events():
     """메모 정제 및 이벤트 자동 생성 테스트"""
     print("=== 메모 정제 및 이벤트 자동 생성 테스트 ===")
     
-    url = "http://localhost:8000/api/memo/refine"
+    url = "http://localhost:8000/v1/api/memo/refine"
     
     test_memo = {
         "memo": "내일 오후 김철수 고객과 생명보험 상담 예정입니다. 2주 후에 다시 전화 드리기로 했습니다. 긴급하게 처리해야 합니다."
@@ -57,7 +57,7 @@ def test_events_upcoming():
     """향후 이벤트 조회 테스트"""
     print("\n=== 향후 이벤트 조회 테스트 ===")
     
-    url = "http://localhost:8000/api/events/upcoming"
+    url = "http://localhost:8000/v1/api/events/upcoming"
     params = {"days": 30}
     
     try:
@@ -84,7 +84,7 @@ def test_events_statistics():
     """이벤트 통계 조회 테스트"""
     print("\n=== 이벤트 통계 조회 테스트 ===")
     
-    url = "http://localhost:8000/api/events/statistics"
+    url = "http://localhost:8000/v1/api/events/statistics"
     
     try:
         response = requests.get(url)
@@ -111,7 +111,7 @@ def test_process_memo_for_events(memo_id):
         
     print(f"\n=== 메모 {memo_id}에서 이벤트 생성 테스트 ===")
     
-    url = "http://localhost:8000/api/events/process-memo"
+    url = "http://localhost:8000/v1/api/events/process-memo"
     data = {"memo_id": memo_id}
     
     try:

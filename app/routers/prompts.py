@@ -16,7 +16,7 @@ from app.models.prompt_models import (
 )
 import uuid
 
-router = APIRouter(prefix="/api/prompts", tags=["prompts"])
+router = APIRouter(prefix="/v1/api/prompts", tags=["prompts"])
 
 
 # === 프롬프트 템플릿 관리 ===

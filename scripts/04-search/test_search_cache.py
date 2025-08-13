@@ -292,12 +292,12 @@ async def main():
         print("   ✅ 검색어 자동완성")
         print("   ✅ 캐시 무효화 및 정리")
         print("\n🔗 API 엔드포인트:")
-        print("   POST /api/search/natural-language (캐시 지원)")
-        print("   GET  /api/search/cache/statistics")
-        print("   GET  /api/search/popular-queries")
-        print("   GET  /api/search/cache/suggest")
-        print("   DELETE /api/search/cache/invalidate")
-        print("   POST /api/search/cache/cleanup")
+        print("   POST /v1/api/search/natural-language (캐시 지원)")
+        print("   GET  /v1/api/search/cache/statistics")
+        print("   GET  /v1/api/search/popular-queries")
+        print("   GET  /v1/api/search/cache/suggest")
+        print("   DELETE /v1/api/search/cache/invalidate")
+        print("   POST /v1/api/search/cache/cleanup")
         
     except Exception as e:
         print(f"\n❌ 테스트 실행 중 오류: {e}")

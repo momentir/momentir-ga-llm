@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/prompt-logs", tags=["prompt-logs"])
+router = APIRouter(prefix="/v1/api/prompt-logs", tags=["prompt-logs"])
 
 
 class PromptTestLogResponse(BaseModel):
