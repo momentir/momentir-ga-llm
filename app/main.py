@@ -3,11 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
-from app.routers import memo, customer, events, prompts, auth, search
-from app.database import db_manager
-from app.utils.langsmith_config import langsmith_manager
-from app.utils.cloudwatch_logger import cloudwatch_logger
-from app.middleware.monitoring import setup_monitoring_middleware
+# V1 Routers (Legacy)
+from app.api.v1.routers import memo as memo_v1, customer as customer_v1, events as events_v1, prompts as prompts_v1, auth as auth_v1, search as search_v1
+
+# V2 Routers (Next Generation)  
+from app.api.v2.routers import memo as memo_v2, search as search_v2
+
+# Core shared components
+from app.core.database import db_manager
+from app.core.utils.langsmith_config import langsmith_manager
+from app.core.utils.cloudwatch_logger import cloudwatch_logger
+from app.core.middleware.monitoring import setup_monitoring_middleware
 from dotenv import load_dotenv
 import os
 import logging
@@ -105,24 +111,29 @@ app.add_middleware(
 # CloudWatch 모니터링 미들웨어 설정
 setup_monitoring_middleware(app, enable_detailed=True)
 
-app.include_router(auth.router)
-app.include_router(memo.router)
-app.include_router(customer.router)
-app.include_router(events.router)
-app.include_router(prompts.router)
-app.include_router(search.router)
+# V1 API Routes (Legacy)
+app.include_router(auth_v1.router)
+app.include_router(memo_v1.router)
+app.include_router(customer_v1.router)
+app.include_router(events_v1.router)
+app.include_router(prompts_v1.router)
+app.include_router(search_v1.router)
 
-# 프롬프트 테스트 로그 라우터 추가
-from app.routers import prompt_logs
-app.include_router(prompt_logs.router)
+# V1 Additional routers
+from app.api.v1.routers import prompt_logs as prompt_logs_v1
+app.include_router(prompt_logs_v1.router)
+
+# V2 API Routes (Next Generation)
+app.include_router(memo_v2.router)
+app.include_router(search_v2.router)
 
 # LCEL SQL 파이프라인 라우터 추가
 from app.api import lcel_sql_routes
 app.include_router(lcel_sql_routes.router)
 
-# 검색 분석 라우터 추가
-from app.routers import search_analytics
-app.include_router(search_analytics.router)
+# V1 검색 분석 라우터 추가
+from app.api.v1.routers import search_analytics as search_analytics_v1
+app.include_router(search_analytics_v1.router)
 
 # 정적 파일 서빙
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -176,6 +187,15 @@ async def root():
             "search_analytics_performance": "/v1/api/search-analytics/performance-stats",
             "search_analytics_failures": "/v1/api/search-analytics/failure-patterns",
             "search_analytics_dashboard": "/v1/api/search-analytics/dashboard",
+            "v2_memo_quick_save": "/v2/api/memo/quick-save",
+            "v2_memo_refine": "/v2/api/memo/refine",
+            "v2_memo_analyze": "/v2/api/memo/analyze",
+            "v2_memo_get": "/v2/api/memo/memo/{memo_id}",
+            "v2_natural_language_search": "/v2/api/search/natural-language",
+            "v2_search_strategies": "/v2/api/search/strategies/v2",
+            "v2_search_analytics": "/v2/api/search/analytics/v2",
+            "v2_search_feedback": "/v2/api/search/feedback/v2",
+            "v2_search_health": "/v2/api/search/health/v2",
             "docs": "/docs"
         }
     }
